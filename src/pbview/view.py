@@ -22,6 +22,7 @@ from pbview.datastore import Coordinates, Track
 
 pn.extension("tabulator")
 
+
 class SelectionState(param.Parameterized):
     """Shared state object of current selections.
 
@@ -51,9 +52,9 @@ class SelectionState(param.Parameterized):
 
         # Populate selector objects
         self.param.samples.objects = list(datastore.base_coord._samples)
-        self.samples = []  # All samples on by default
+        self.samples = list(datastore.base_coord._samples)
         self.param.contigs.objects = list(datastore.base_coord._contigs)
-        self.contigs = list(datastore.base_coord._contigs)  # All contigs on by default
+        self.contigs = list(datastore.base_coord._contigs)
 
         tracks = list(datastore.tracks.keys())
         self.param.active_track.objects = tracks
@@ -156,9 +157,7 @@ class CoordinatesView(Viewer):
 
         self.summary_pane = pn.bind(
             lambda *_: pn.widgets.Tabulator(
-                state.summary_df(),
-                groupby=["Type"],
-                hidden_columns=["Type"]
+                state.summary_df(), groupby=["Type"], hidden_columns=["Type"]
             ),
             state.param.lower,
             state.param.upper,
@@ -207,7 +206,7 @@ class TrackView(Viewer, param.ParameterizedABC):
 
 class TrackSummaryView(TrackView):
     def __panel__(self):
-        return pn.Column("# Track view summary", self.track.summary(self.state.coord))
+        return pn.Column("# Track summary", self.track.summary(self.state.coord))
 
 
 class DataStoreView(Viewer):

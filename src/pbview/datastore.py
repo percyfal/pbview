@@ -415,7 +415,7 @@ class Coordinates:
         return pd.concat(
             [self._coordinates_dataframe(), self._sample_sets_dataframe()],
             keys=["Coordinates", "Sample sets"],
-            names=["Type", "Label"]
+            names=["Type", "Label"],
         )
 
     def _contigs_dataframe(self) -> pd.DataFrame:
