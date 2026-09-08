@@ -82,10 +82,12 @@ class SelectionState(param.Parameterized):
             contigs=contigs or None, lower=lower, upper=upper
         )
 
-    @param.depends("lower", "upper", watch=True)
-    def _apply_contig_len_filters(self):
+    @param.depends("lower", "upper", "contigs", watch=True)
+    def _apply_contig_filters(self):
         """Push contig length param changes into the mutable coord object."""
-        self.coord.with_contigs(lower=self.lower, upper=self.upper)
+        self.coord.with_contigs(
+            lower=self.lower, upper=self.upper, contigs=self.contigs
+        )
 
     @param.depends("samples", watch=True)
     def _apply_sample_filters(self):
