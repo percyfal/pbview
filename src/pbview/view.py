@@ -106,7 +106,7 @@ class SelectionState(param.Parameterized):
             {
                 "sample set": self.coord._default_sample_sets,
                 "Active": ~self.coord.sample_mask,
-                "Total": self.coord._sample,
+                "Total": self.coord._samples,
             }
         )
         if not np.all(self.coord._sample_sets == config.DEFAULT_SAMPLE_SET):
@@ -116,13 +116,13 @@ class SelectionState(param.Parameterized):
                     {
                         "sample_sets": self.coord._sample_sets,
                         "Active": ~self.coord.sample_mask,
-                        "Total": self.coord._sample,
+                        "Total": self.coord._samples,
                     }
                 ),
             )
         return df.groupby("sample set").agg({"Active": "sum", "Total": "count"})
 
-    @param.depends("lower", "upper", "samples")
+    @param.depends("lower", "upper", "samples", "contigs")
     def summary_df(self):
         return self.coord.to_dataframe()
 

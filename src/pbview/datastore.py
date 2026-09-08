@@ -416,8 +416,8 @@ class Coordinates:
     def _contigs_dataframe(self) -> pd.DataFrame:
         return pd.DataFrame(
             {
-                "contig": self.coord.contig,
-                "contig_len": self.coord.contig_len,
+                "contig": self.contigs,
+                "contig_len": self.contig_len,
             }
         )
 
@@ -520,7 +520,7 @@ class Track:
                     "n_contigs": len(coord._contigs),
                     "min_contig_len": lower,
                     "max_contig_len": upper,
-                    "n_contigs_selected": len(coord.contigs),
+                    "n_contigs_selected": coord.contigs_size,
                 }
             ]
         )
