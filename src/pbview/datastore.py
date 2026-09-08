@@ -235,7 +235,11 @@ class Coordinates:
     ) -> "Coordinates":
         """Keep only listed contigs and contigs whose lengths satisfy
         lower ≤ len ≤ upper. `None` resets the contig mask."""
-        if (contigs is None) and (lower == 0) and (np.isinf(upper)):
+        if (
+            ((contigs is None) or (len(contigs) == 0))
+            and (lower == 0)
+            and (np.isinf(upper))
+        ):
             return self._replace(contig_mask=np.zeros_like(self.contig_mask))
         keep = ~self.with_length_filter(lower=lower, upper=upper).contig_mask
         if contigs is not None:
