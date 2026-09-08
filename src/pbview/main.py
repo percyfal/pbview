@@ -18,7 +18,7 @@ from pbview import datastore  # noqa
 
 import sys
 from collections import deque
-from pbview.__main__ import serve, preprocess
+from pbview.__main__ import serve
 from pbview.logging import app_logger as logger
 
 arglist = deque(sys.argv)
@@ -32,8 +32,6 @@ except IndexError:
 if argfun == "serve":
     arglist.append("--servable")
     fun = serve
-elif argfun == "preprocess":
-    fun = preprocess
 else:
     fun = serve
     arglist.append("--help")
