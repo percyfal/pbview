@@ -20,6 +20,7 @@ from panel.viewable import Viewer
 from pbview import config
 from pbview.datastore import Coordinates, Track
 
+pn.extension("tabulator")
 
 class SelectionState(param.Parameterized):
     """Shared state object of current selections.
@@ -148,15 +149,15 @@ class CoordinatesView(Viewer):
             height=200,
             scroll=True,
         )
-        self.sample_sets_pane = pn.bind(
-            lambda *_: state.sample_sets_df(),
-            state.param.samples,
-        )
         # self.contigs_w =  pn.widgets.MultiSelect.from_param(state.param.contigs,
         #                                                     name="Toggle contigs")
 
         self.summary_pane = pn.bind(
-            lambda *_: state.summary_df(),
+            lambda *_: pn.widgets.Tabulator(
+                state.summary_df(),
+                groupby=["Type"],
+                hidden_columns=["Type"]
+            ),
             state.param.lower,
             state.param.upper,
             state.param.samples,
@@ -178,7 +179,6 @@ class CoordinatesView(Viewer):
     def __panel__(self):
         return pn.Column(
             self.summary_pane,
-            self.sample_sets_pane,
             self.samples_w,
             # self.contigs_w,
             pn.Column(
