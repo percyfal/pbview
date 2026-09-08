@@ -1,0 +1,171 @@
+[project]
+authors = [{ name = "Per Unneberg", email = "per.unneberg@scilifelab.se" }]
+name = "pbview"
+requires-python = ">= 3.12"
+dynamic = ["version"]
+dependencies = [
+  "click>=8.4.0",
+  "diskcache>=5.6.3",
+  "holoviews>=1.23.0",
+  "humanize>=4.16.0",
+  "hvplot>=0.12.0",
+  "panel>=1.9.0",
+  "param>=2.4.0",
+  "scipy>=1.18.1",
+  "watchfiles>=1.2.0",
+  #"pbzarr @ git+https://github.com/pbzarr/pbzarr.git@main?rev_type=branch",
+  "pbzarr @ file:///home/peru/dev/python/pbview/opt/pbzarr",
+  "jsonschema>=4.24.0",
+  "distributed>=2026.7.1,<2027",
+  "pyarrow>=25.0.1,<26",
+]
+
+[dependency-groups]
+dev = [
+  "jupyter-console>=6.6.3",
+  "pytest>=8",
+  "pandas-stubs",
+  "jupyterlab",
+  "hatch-vcs",
+]
+
+[project.scripts]
+pbview = "pbview:__main__.cli"
+# pbview-import = "pbview.tools.import:cli"
+# pbview-preprocess = "pbview.tools.preprocess:cli"
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling", "hatch-vcs"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/pbview/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pbview"]
+
+[tool.pytest]
+minversion = "8.0"
+addopts = ["-ra", "-q", "--doctest-modules", "--ignore", "src/pbview/main.py"]
+testpaths = ["tests"]
+
+[tool.ty.rules]
+index-out-of-bounds = "ignore"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+  "A",    # warn about shadowing built-ins
+  "E",    # style stuff, whitespaces
+  "F",    # important pyflakes lints
+  "I",    # import sorting
+  "N",    # naming
+  "T100", # breakpoints (probably don't want these in prod!)
+]
+ignore = ["N806"]
+
+[tool.ruff.lint.isort]
+# so it knows to group first-party stuff last
+known-first-party = ["pbview"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge", "bioconda"]
+platforms = ["linux-64"]
+preview = ["pixi-build"]
+
+[tool.pixi.pypi-dependencies]
+pbview = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+
+[tool.pixi.tasks.init_store]
+cmd = "test -d 'store' && echo 'store exists' || pbview import store tests/data/s*.per-base.d4"
+
+[tool.pixi.tasks.dev]
+args = [
+  { "arg" = "port", default = "5507" },
+  { "arg" = "input", default = "store" },
+]
+depends-on = ["init_store"]
+cmd = "panel serve src/pbview --dev --show --args serve --port {{port}} {{ input }}"
+
+[tool.pixi.tasks.sandbox]
+args = [{ "arg" = "port", default = "5508" }]
+cmd = "panel serve src/pbview --dev --admin --show --port {{port}} --args sandbox tests/data/sum.d4 --annotation-file tests/data/annotation.gff.gz"
+
+[tool.pixi.feature.quartodoc.tasks.quartodoc]
+cmd = "quartodoc build"
+cwd = "docs"
+
+[tool.pixi.feature.quartodoc.tasks.preview]
+depends-on = [{ task = "quartodoc" }]
+cmd = "quarto preview"
+cwd = "docs"
+
+[tool.pixi.feature.quartodoc.tasks.render]
+depends-on = [{ task = "quartodoc" }]
+cmd = "quarto render"
+cwd = "docs"
+
+[tool.pixi.feature.quartodoc.tasks.publish]
+depends-on = [{ task = "quartodoc" }]
+cmd = "quarto publish gh-pages docs --no-browser"
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default" }
+lint = { features = ["lint"], solve-group = "default" }
+quartodoc = { features = ["quartodoc"], solve-group = "default" }
+
+[tool.pixi.feature.dev.tasks.test]
+args = [{ "arg" = "test", default = "tests" }]
+cmd = "pytest -v -s {{test}}"
+
+[tool.pixi.feature.lint.tasks]
+actionlint = { cmd = "actionlint", env = { SHELLCHECK_OPTS = "-e SC2086" } }
+lint = { cmd = "pre-commit run --all-files --hook-stage=manual", description = "Run all linters and formatters on all code" }
+pre-commit-install = "pre-commit install --install-hooks -t=pre-commit -t=pre-push"
+pre-commit-install-minimal = "pre-commit install -t=pre-commit"
+pre-commit-run = "pre-commit run --all-files"
+ruff-format = "ruff format --force-exclude"
+ruff-lint = "ruff check --fix --exit-non-zero-on-fix --force-exclude"
+shell-format = "shfmt --write --indent=4 --simplify --binary-next-line"
+toml-format = { cmd = "taplo fmt", env = { RUST_LOG = "warn" } }
+toml-lint = "taplo lint --verbose **/pyproject.toml"
+typecheck-python = "mypy"
+typos = "typos --write-changes --force-exclude"
+
+[tool.pixi.feature.lint.dependencies]
+pre-commit = "*"
+pre-commit-hooks = "*"
+ruff = "*"
+typos = "*"
+actionlint = "*"
+go-shfmt = "*"
+taplo = "*"
+pylint = ">=3.3.8,<4"
+
+[tool.pixi.feature.quartodoc.dependencies]
+quartodoc = "*"
+quarto = ">=1.8.25,<2"
+
+[tool.pixi.tasks.clone-pbzarr]
+cmd = """
+    git clone https://github.com/pbzarr/pbzarr.git opt/pbzarr
+"""
+
+[tool.basedpyright]
+venvPath = ".pixi/envs"
+venv = "dev"
