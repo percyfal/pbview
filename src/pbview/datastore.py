@@ -360,20 +360,20 @@ class Coordinates:
     def size(self):
         return np.sum(self.contig_len, dtype=np.int64)
 
-    def mask_contigs(self, lower: int = 0, upper: int | float = np.inf):
-        """Mask contigs by length"""
-        self.lower = lower
-        self.upper = upper
-        self.contig_mask = ~np.array(
-            [(x >= lower) & (x <= upper) for x in self._contig_len]
-        )
+    # def mask_contigs(self, lower: int = 0, upper: int | float = np.inf):
+    #     """Mask contigs by length"""
+    #     self.lower = lower
+    #     self.upper = upper
+    #     self.contig_mask = ~np.array(
+    #         [(x >= lower) & (x <= upper) for x in self._contig_len]
+    #     )
 
-    def mask_samples(self, samples=None) -> None:
-        """Mask samples in argument. Reset mask if no samples"""
-        if samples is None:
-            self.sample_mask: list[bool] = np.zeros(len(self._samples), dtype=bool)
-        else:
-            self.sample_mask = np.isin(self._samples, samples)
+    # def mask_samples(self, samples=None) -> None:
+    #     """Mask samples in argument. Reset mask if no samples"""
+    #     if samples is None:
+    #         self.sample_mask: list[bool] = np.zeros(len(self._samples), dtype=bool)
+    #     else:
+    #         self.sample_mask = np.isin(self._samples, samples)
 
     def _sample_sets_dataframe(self) -> pd.DataFrame:
         df = pd.DataFrame(
