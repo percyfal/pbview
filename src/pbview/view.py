@@ -43,17 +43,17 @@ class SelectionState(param.Parameterized):
     active_track = param.Selector(default=None, objects=[])
 
     def __init__(self, datastore, active_track="depth", **params):
-        params.setdefault("base_coord", datastore.coord)
-        params.setdefault("coord", datastore.coord)
+        params.setdefault("base_coord", datastore.base_coord)
+        params.setdefault("coord", datastore.base_coord)
         super().__init__(**params)
 
         self.datastore = datastore
 
         # Populate selector objects
-        self.param.samples.objects = list(datastore.coord._sample)
+        self.param.samples.objects = list(datastore.base_coord._samples)
         self.samples = []  # All samples on by default
-        self.param.contigs.objects = list(datastore.coord._contig)
-        self.contigs = list(datastore.coord._contig)  # All contigs on by default
+        self.param.contigs.objects = list(datastore.base_coord._contigs)
+        self.contigs = list(datastore.base_coord._contigs)  # All contigs on by default
 
         tracks = list(datastore.tracks.keys())
         self.param.active_track.objects = tracks
