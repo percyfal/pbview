@@ -133,3 +133,14 @@ def test_base_coord(coordinates):
     assert filtered_coord.samples_size == 2
     assert filtered_coord.base_coord.contigs_size == 3
     assert filtered_coord.base_coord.samples_size == 7
+
+
+def test_as_pyranges(coordinates):
+    coord, _ = coordinates
+    filtered_coord = coord.with_length_filter(lower=850_000).with_samples(["s1", "s2"])
+    pr1 = coord.as_pyranges()
+    pr2 = filtered_coord.as_pyranges()
+    pr3 = filtered_coord.base_coord.as_pyranges()
+    assert len(pr1.chromosomes) == 3
+    assert len(pr2.chromosomes) == 2
+    assert len(pr3.chromosomes) == 3

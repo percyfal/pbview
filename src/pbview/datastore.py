@@ -20,6 +20,7 @@ import pandas as pd
 import pbzarr
 import xarray as xr
 import zarr
+import pyranges1 as pr
 from dask.diagnostics import ProgressBar
 
 from pbview import config
@@ -315,23 +316,15 @@ class Coordinates:
         """Original-vector indices of currently active contigs."""
         return np.flatnonzero(~self.contig_mask).astype(np.int64)
 
-    def contig_slices(self) -> list[tuple(int, int)] | None:
-        """Return a list of reduced slices for subsetting data by position"""
-        idx = self.active_contig_indices
-        if idx.size == 0:
+    def contig_slices(self) -> list[np.array[int]] | None:
+        """Return a list of reduced slices mapped to position coordinates."""
+        if self.active_contig_indices.size == 0:
             return []
-
-        starts = self._offsets[idx]
-        ends = self._offsets[idx + 1]
-
-        merged: list[tuple[int, int]] = [(int(starts[0]), int(ends[0]))]
-        for s, e in zip(starts[1:], ends[1:]):
-            prev_s, prev_e = merged[-1]
-            if s == prev_e:
-                merged[-1] = (prev_s, int(e))
-            else:
-                merged.append((int(s), int(e)))
-        return merged
+        return pr.PyRanges({
+            "Start": self._offsets[:-1][self.active_contig_indices],
+            "End": self._offsets[1:][self.active_contig_indices],
+            "Chromosome": "Placeholder"
+        }).merge_overlaps(slack=1)[["Start", "End"]].to_numpy().tolist()
 
     @property
     def contigs(self):
