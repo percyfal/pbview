@@ -124,3 +124,12 @@ def test_reset(coordinates):
     reset_coord = filtered_coord.reset()
     assert reset_coord.contigs_size == 3
     assert reset_coord.samples_size == 7
+
+
+def test_base_coord(coordinates):
+    coord, _ = coordinates
+    filtered_coord = coord.with_length_filter(lower=850_000).with_samples(["s1", "s2"])
+    assert filtered_coord.contigs_size == 2
+    assert filtered_coord.samples_size == 2
+    assert filtered_coord.base_coord.contigs_size == 3
+    assert filtered_coord.base_coord.samples_size == 7

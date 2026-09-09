@@ -30,7 +30,6 @@ class SelectionState(param.Parameterized):
     Datastore.
     """
 
-    base_coord = param.ClassSelector(class_=Coordinates, precedence=-1)
     coord = param.ClassSelector(class_=Coordinates, precedence=-1)
 
     lower = param.Integer(default=0, bounds=(0, None), doc="Minimum contig length")
@@ -44,7 +43,6 @@ class SelectionState(param.Parameterized):
     active_track = param.Selector(default=None, objects=[])
 
     def __init__(self, datastore, active_track="depth", **params):
-        params.setdefault("base_coord", datastore.base_coord)
         params.setdefault("coord", datastore.base_coord)
         super().__init__(**params)
 
@@ -63,7 +61,7 @@ class SelectionState(param.Parameterized):
     @param.depends("lower", "upper", "samples", "contigs", watch=True)
     def _recompute_coord(self):
         self.coord = self._filtered(
-            self.base_coord,
+            self.coord.base_coord,
             self.lower,
             self.upper,
             tuple(self.samples),

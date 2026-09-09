@@ -272,6 +272,14 @@ class Coordinates:
             contig_mask=(np.zeros_like(self.contig_mask) if contigs else None),
         )
 
+    @property
+    def base_coord(self) -> "Coordinates":
+        """Return a new Coordinates with no masks (nothing hidden)."""
+        return self._replace(
+            sample_mask=np.zeros_like(self.sample_mask),
+            contig_mask=np.zeros_like(self.contig_mask),
+        )
+
     @cached_property
     def _contig_len_all(self) -> npt.NDArray[np.uint32]:
         return np.diff(self._offsets).astype(np.uint32)
