@@ -93,7 +93,7 @@ class SelectionState(param.Parameterized):
         """Push sample param changes into the mutable coord object."""
         self.coord.with_samples(samples=self.samples or None)
 
-    @param.depends("lower", "upper")
+    @param.depends("lower", "upper", "contigs")
     def contigs_df(self):
         return pd.DataFrame(
             {
@@ -102,7 +102,7 @@ class SelectionState(param.Parameterized):
             }
         )
 
-    @param.depends("samples")
+    @param.depends("samples", "contigs")
     def sample_sets_df(self):
         df = pd.DataFrame(
             {
@@ -147,11 +147,17 @@ class CoordinatesView(Viewer):
         )
         self.samples_w = pn.Column(
             pn.widgets.MultiChoice.from_param(state.param.samples, name="Mask samples"),
-            height=200,
+            height=150,
             scroll=True,
         )
-        # self.contigs_w =  pn.widgets.MultiSelect.from_param(state.param.contigs,
-        #                                                     name="Toggle contigs")
+        self.contigs_w =  pn.Column(
+            pn.widgets.MultiChoice.from_param(
+                state.param.contigs,
+                name="Mask contigs"
+            ),
+            height=150,
+            scroll=True,
+        )
 
         self.summary_pane = pn.bind(
             lambda *_: pn.widgets.Tabulator(
@@ -160,6 +166,7 @@ class CoordinatesView(Viewer):
             state.param.lower,
             state.param.upper,
             state.param.samples,
+            state.param.contigs,
         )
         self.hist_pane = pn.panel(
             pn.bind(
@@ -179,7 +186,7 @@ class CoordinatesView(Viewer):
         return pn.Column(
             self.summary_pane,
             self.samples_w,
-            # self.contigs_w,
+            self.contigs_w,
             pn.Column(
                 "### Contig selection and statistics",
                 self.lower_w,
@@ -226,6 +233,7 @@ class DataStoreView(Viewer):
             self.state.param.lower,
             self.state.param.upper,
             self.state.param.samples,
+            self.state.param.contigs,
         )
 
     def _render_main(self, *_):
