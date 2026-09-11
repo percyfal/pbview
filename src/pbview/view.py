@@ -83,15 +83,17 @@ class SelectionStateBase(param.Parameterized):
         samples: tuple[str, ...],
         contigs: tuple[str, ...],
     ) -> Coordinates:
-        return base.with_samples(samples=samples or None).with_contigs(
-            contigs=contigs or None, lower=lower, upper=upper
+        return (
+            base.with_samples(samples=samples or None)
+            .with_contigs(contigs=contigs or None)
+            .with_length_filter(lower=lower, upper=upper)
         )
 
     @param.depends("lower", "upper", "contigs", watch=True)
     def _apply_contig_filters(self):
         """Push contig length param changes into the mutable coord object."""
-        self.coord.with_contigs(
-            lower=self.lower, upper=self.upper, contigs=self.contigs
+        self.coord.with_contigs(contigs=self.contigs).with_length_filter(
+            lower=self.lower, upper=self.upper
         )
 
     @param.depends("samples", watch=True)
@@ -149,7 +151,7 @@ def make_selection_state(
             default=max_coverage, bounds=(0, None)
         )
         params[f"missingness_{s}"] = param.Integer(
-            default=0, bounds=(0, base_coord.with_samples(sample_sets=[s]).samples_size)
+            default=0, bounds=(0, base_coord.with_sample_sets([s]).samples_size)
         )
 
     return type("SelectionState", (SelectionStateBase,), params)
@@ -300,7 +302,7 @@ class TrackCoverageView(_TrackPlotView):
         else:
             sample_sets = [self.sample_set]
         counts, bins = self.track.coverage_hist(
-            bins=self.bins, coord=self.state.coord.with_samples(sample_sets=sample_sets)
+            bins=self.bins, coord=self.state.coord.with_sample_sets(sample_sets)
         )
         bins = bins[:-1]
         self._df = pd.DataFrame({"bins": bins, "counts": counts})
@@ -328,7 +330,7 @@ class TrackCoverageView(_TrackPlotView):
 
     def __panel__(self):
         return pn.Column(
-            "# Coverage",
+            f"### {self.sample_set}",
             pn.Row(
                 self.param.maxbins,
                 self.state.param[f"lower_coverage_{self.sample_set}"],
@@ -365,7 +367,7 @@ class TrackMissingnessView(_TrackPlotView):
         for sample_set in list(set(self.state.coord.sample_sets)):
             _counts, _bins = self.track.missingness_hist(
                 bins=self.bins,
-                coord=self.state.coord.with_samples(sample_sets=[sample_set]),
+                coord=self.state.coord.with_sample_sets([sample_set]),
                 threshold=self.missingness_threshold,
             )
             _bins = _bins[:-1]
@@ -437,21 +439,25 @@ class DataStoreView(Viewer):
             self.state.param.contigs,
         )
 
+    def _render_coverage(self):
+        return pn.Column(
+            "# Coverage",
+            pn.GridBox(
+                *[
+                    self.track_coverage_view[s]
+                    for s in self.state.coord.sample_sets_unique
+                ],
+                ncols=2,
+            ),
+        )
+
     # FIXME: if the trackplotview is too expensive to recompute on
     # every coordinate selection one could bind to a separate function
     # where an active user input is required to refresh.
     def _render_main(self, *_):
         return pn.Column(
-            pn.Row(
-                pn.GridBox(
-                    *[
-                        self.track_coverage_view[s]
-                        for s in self.state.coord.sample_sets_unique
-                    ],
-                    ncols=2,
-                ),
-                self.track_missingness_view,
-            )
+            self._render_coverage(),
+            self.track_missingness_view,
         )
 
     # FIXME: need a refresh button to reset to defaults. Possibly add

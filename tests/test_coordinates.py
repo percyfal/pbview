@@ -12,6 +12,7 @@ class ExpectedSampleSetsSize:
     default: int
     sample_sets_size_pop1: int
     samples_size_pop1: int
+    s1_s2_pop1_sample_size: int
 
 
 @pytest.fixture(params=["vectors", "DataTree"])
@@ -61,10 +62,16 @@ def coordinates(coordinate_args, samplesets):
 def expected_sample_sets_size(samplesets):
     if samplesets is None:
         return ExpectedSampleSetsSize(
-            default=1, sample_sets_size_pop1=0, samples_size_pop1=0
+            default=1,
+            sample_sets_size_pop1=0,
+            samples_size_pop1=0,
+            s1_s2_pop1_sample_size=0,
         )
     return ExpectedSampleSetsSize(
-        default=3, sample_sets_size_pop1=1, samples_size_pop1=3
+        default=3,
+        sample_sets_size_pop1=1,
+        samples_size_pop1=3,
+        s1_s2_pop1_sample_size=2,
     )
 
 
@@ -80,9 +87,20 @@ def test_with_contigs(coordinates):
     assert coord.with_contigs(["chr1", "chr3"]).contigs_size == 2
     assert coord.with_contigs(["chr2"]).contigs_size == 1
     assert coord.with_contigs(["chr4"]).contigs_size == 0
-    assert coord.with_contigs(["chr1"], lower=850_000).contigs_size == 1
-    assert coord.with_contigs(["chr1", "chr2"], lower=950_000).contigs_size == 1
     assert coord.with_contigs(["chr1"]).with_contigs().contigs_size == 3
+
+
+def test_with_contigs_and_length_filters(coordinates):
+    coord, _ = coordinates
+    assert (
+        coord.with_contigs(["chr1"]).with_length_filter(lower=850_000).contigs_size == 1
+    )
+    assert (
+        coord.with_contigs(["chr1", "chr2"])
+        .with_length_filter(lower=950_000)
+        .contigs_size
+        == 1
+    )
 
 
 def test_with_samples(coordinates, expected_sample_sets_size):
@@ -104,6 +122,22 @@ def test_with_sample_sets(coordinates, expected_sample_sets_size):
         == expected_sample_sets_size.samples_size_pop1
     )
     assert coord.with_sample_sets(sample_sets=["pop0"]).sample_sets_size == 0
+
+
+def test_with_samples_and_sample_sets(coordinates, expected_sample_sets_size):
+    coord, _ = coordinates
+    assert (
+        coord.with_samples(["s1", "s2"])
+        .with_sample_sets(sample_sets=["pop2"])
+        .samples_size
+        == 0
+    )
+    assert (
+        coord.with_samples(["s1", "s2"])
+        .with_sample_sets(sample_sets=["pop1"])
+        .samples_size
+        == expected_sample_sets_size.s1_s2_pop1_sample_size
+    )
 
 
 def test_contig_slices(coordinates):

@@ -223,40 +223,27 @@ class Coordinates:
         return new
 
     # Factory methods
-
-    # FIXME: Make separate functions: either the parameter is contigs
-    # or it is length filter. For this to work need to also intersect
-    # with currently active contigs (see below)
     def with_length_filter(
         self, lower: int = 0, upper: float = np.inf
     ) -> "Coordinates":
         """Return a new Coordinates whose contigs satisfy lower ≤ len ≤ upper."""
-        keep = (self._contig_len_all >= lower) & (self._contig_len_all <= upper)
+        keep = (
+            (self._contig_len_all >= lower)
+            & (self._contig_len_all <= upper)
+            & ~self.contig_mask
+        )
         return self._replace(contig_mask=~keep)
 
-    # FIXME: Make separate functions: either the parameter is contigs
-    # or it is length filter
     def with_contigs(
         self,
         contigs: Iterable[str] | None = None,
-        lower: int = 0,
-        upper: float = np.inf,
     ) -> "Coordinates":
-        """Keep only listed contigs and contigs whose lengths satisfy
-        lower ≤ len ≤ upper. `None` resets the contig mask."""
-        if (
-            ((contigs is None) or (len(contigs) == 0))
-            and (lower == 0)
-            and (np.isinf(upper))
-        ):
+        """Keep only listed contigs. `None` resets the contig mask."""
+        if contigs is None:
             return self._replace(contig_mask=np.zeros_like(self.contig_mask))
-        keep = ~self.with_length_filter(lower=lower, upper=upper).contig_mask
-        if contigs is not None:
-            keep = keep & np.isin(self._contigs, np.asarray(list(contigs)))
+        keep = np.isin(self._contigs, np.asarray(list(contigs))) & ~self.contig_mask
         return self._replace(contig_mask=~keep)
 
-    # FIXME: Again, make separate functions: either the parameer is
-    # samples or it is sample_sets
     def with_samples(
         self,
         samples: Iterable[str] | None = None,
@@ -264,14 +251,14 @@ class Coordinates:
         """Keep only listed samples. `None` resets the sample mask."""
         if samples is None:
             return self._replace(sample_mask=np.zeros_like(self.sample_mask))
-        keep = np.isin(self._samples, np.asarray(list(samples)))
+        keep = np.isin(self._samples, np.asarray(list(samples))) & ~self.sample_mask
         return self._replace(sample_mask=~keep)
 
     def with_sample_sets(self, sample_sets: list[str]):
         """Keep only listed sample sets. `None` resets the sample mask."""
         if sample_sets is None:
             return self._replace(sample_mask=np.zeros_like(self.sample_mask))
-        keep = np.isin(self._sample_sets, sample_sets)
+        keep = np.isin(self._sample_sets, sample_sets) & ~self.sample_mask
         return self._replace(sample_mask=~keep)
 
     def reset(self, *, samples: bool = True, contigs: bool = True) -> "Coordinates":
