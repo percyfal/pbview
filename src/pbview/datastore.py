@@ -223,6 +223,10 @@ class Coordinates:
         return new
 
     # Factory methods
+
+    # FIXME: Make separate functions: either the parameter is contigs
+    # or it is length filter. For this to work need to also intersect
+    # with currently active contigs (see below)
     def with_length_filter(
         self, lower: int = 0, upper: float = np.inf
     ) -> "Coordinates":
@@ -230,6 +234,8 @@ class Coordinates:
         keep = (self._contig_len_all >= lower) & (self._contig_len_all <= upper)
         return self._replace(contig_mask=~keep)
 
+    # FIXME: Make separate functions: either the parameter is contigs
+    # or it is length filter
     def with_contigs(
         self,
         contigs: Iterable[str] | None = None,
@@ -249,6 +255,8 @@ class Coordinates:
             keep = keep & np.isin(self._contigs, np.asarray(list(contigs)))
         return self._replace(contig_mask=~keep)
 
+    # FIXME: Again, make separate functions: either the parameer is
+    # samples or it is sample_sets
     def with_samples(
         self,
         samples: Iterable[str] | None = None,

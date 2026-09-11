@@ -274,6 +274,8 @@ class _TrackPlotView(TrackView, param.ParameterizedABC):
         pass
 
 
+# FIXME: pre-calculate maxbins as mean coverage + 4sd or something
+# like that
 class TrackCoverageView(_TrackPlotView):
     maxbins = param.Integer(default=1000, bounds=(0, None), doc="Maximum bin size")
     plot_type = param.Selector(default="area", objects=["area", "bar"], doc="Plot type")
