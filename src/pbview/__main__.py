@@ -228,12 +228,12 @@ def serve(path, annotation_file, sampleinfo, port, show, threads, servable, summ
 @log_filter_option()
 @log_level()
 def summarize(
-    path: Path,
-    sampleinfo: Path | str | None,
-    annotation_file: Path | str | None,
-    threads: int,
-    workers: int,
-    max_bins: int,
+        path: Path,
+        sampleinfo: Path | str | None,
+        annotation_file: Path | str | None,
+        threads: int,
+        workers: int,
+        max_bins: int,
 ):
     """Run summary analysis on a pbzarr store."""
     if annotation_file is not None:
@@ -251,6 +251,19 @@ def summarize(
     )
     logger.info(data)
 
+
+# FIXME: This is a placeholder for the preprocess command. It should
+# be implemented to handle preprocessing of expensive data before
+# serving. The user should be able to provide
+#   - a grid of maxbin values for the histograms per sample-set;
+#     defaults to mean + 3-5stddev rounded to next 100? or base on
+#     magnitude of the mean?
+#   - a grid of threshold values for the histograms per sample-set; default 0-5?
+#   - sampleinfo such that histograms are pre-computed for all sampleset groupings
+#   - contig length filters to start with sensible contigs (exclude low-complexity)
+@cli.command()
+def preprocess():
+    pass
 
 if __name__ == "__main__":
     cli()

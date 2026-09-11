@@ -44,10 +44,7 @@ def serve(servable, **kw):
     """Serve the app"""
     logger.info("Serving main app")
 
-    kwargs = {
-        "path": kw.pop("path", None),
-        "sampleinfo": kw.pop("sampleinfo", None)
-    }
+    kwargs = {"path": kw.pop("path", None), "sampleinfo": kw.pop("sampleinfo", None)}
     ds = DataStore(**kwargs)
     dsview = DataStoreView(datastore=ds)
     app_ = App(datastoreview=dsview)

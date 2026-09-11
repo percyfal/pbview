@@ -98,7 +98,7 @@ cmd = "test -d 'store' && echo 'store exists' || pbview import store tests/data/
 args = [
   { "arg" = "port", default = "5507" },
   { "arg" = "input", default = "store" },
-  { "arg" = "options", default = "--sampleinfo tests/data/sampleinfo.tsv" }
+  { "arg" = "options", default = "--sampleinfo tests/data/sampleinfo.tsv" },
 ]
 depends-on = ["init_store"]
 cmd = "panel serve src/pbview --dev --show --args serve --port {{port}} {{ options }} {{ input }} "
