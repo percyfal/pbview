@@ -260,20 +260,18 @@ class Coordinates:
     def with_samples(
         self,
         samples: Iterable[str] | None = None,
-        sample_sets: Iterable[str] | None = None,
     ) -> "Coordinates":
         """Keep only listed samples. `None` resets the sample mask."""
-        if (samples is None) and (sample_sets is None):
+        if samples is None:
             return self._replace(sample_mask=np.zeros_like(self.sample_mask))
-        if sample_sets is not None:
-            keep1 = np.isin(self._sample_sets, sample_sets)
-        else:
-            keep1 = np.ones(self._samples.size, dtype=bool)
-        if samples is not None:
-            keep2 = np.isin(self._samples, np.asarray(list(samples)))
-        else:
-            keep2 = np.ones(self._samples.size, dtype=bool)
-        keep = keep1 & keep2
+        keep = np.isin(self._samples, np.asarray(list(samples)))
+        return self._replace(sample_mask=~keep)
+
+    def with_sample_sets(self, sample_sets: list[str]):
+        """Keep only listed sample sets. `None` resets the sample mask."""
+        if sample_sets is None:
+            return self._replace(sample_mask=np.zeros_like(self.sample_mask))
+        keep = np.isin(self._sample_sets, sample_sets)
         return self._replace(sample_mask=~keep)
 
     def reset(self, *, samples: bool = True, contigs: bool = True) -> "Coordinates":
@@ -367,10 +365,7 @@ class Coordinates:
     @property
     def sample_sets_unique(self) -> list[str]:
         """Return unique sample sets"""
-        values = [config.DEFAULT_SAMPLE_SET]
-        if not np.all(self._sample_sets == config.DEFAULT_SAMPLE_SET):
-            values.extend(sorted(list(set(self._sample_sets))))
-        return values
+        return sorted(list(set(self._sample_sets)))
 
     @property
     def sample_sets_size(self):
@@ -381,6 +376,10 @@ class Coordinates:
     def default_sample_sets(self):
         """Return default sample sets"""
         return (self._default_sample_sets[~self.sample_mask],)
+
+    @property
+    def default_sample_set_name(self) -> str:
+        return config.DEFALT_SAMPLE_SET
 
     @cached_property
     def genome_size(self):

@@ -228,12 +228,12 @@ def serve(path, annotation_file, sampleinfo, port, show, threads, servable, summ
 @log_filter_option()
 @log_level()
 def summarize(
-        path: Path,
-        sampleinfo: Path | str | None,
-        annotation_file: Path | str | None,
-        threads: int,
-        workers: int,
-        max_bins: int,
+    path: Path,
+    sampleinfo: Path | str | None,
+    annotation_file: Path | str | None,
+    threads: int,
+    workers: int,
+    max_bins: int,
 ):
     """Run summary analysis on a pbzarr store."""
     if annotation_file is not None:
@@ -264,6 +264,7 @@ def summarize(
 @cli.command()
 def preprocess():
     pass
+
 
 if __name__ == "__main__":
     cli()

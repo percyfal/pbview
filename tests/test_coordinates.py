@@ -91,15 +91,19 @@ def test_with_samples(coordinates, expected_sample_sets_size):
     assert coord.with_samples(["s1", "s8"]).samples_size == 1
     assert coord.with_samples(["s8"]).samples_size == 0
     assert coord.with_samples().samples_size == 7
+
+
+def test_with_sample_sets(coordinates, expected_sample_sets_size):
+    coord, _ = coordinates
     assert (
-        coord.with_samples(sample_sets=["pop1"]).sample_sets_size
+        coord.with_sample_sets(sample_sets=["pop1"]).sample_sets_size
         == expected_sample_sets_size.sample_sets_size_pop1
     )
     assert (
-        coord.with_samples(sample_sets=["pop1"]).samples_size
+        coord.with_sample_sets(sample_sets=["pop1"]).samples_size
         == expected_sample_sets_size.samples_size_pop1
     )
-    assert coord.with_samples(sample_sets=["pop0"]).sample_sets_size == 0
+    assert coord.with_sample_sets(sample_sets=["pop0"]).sample_sets_size == 0
 
 
 def test_contig_slices(coordinates):
