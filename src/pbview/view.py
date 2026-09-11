@@ -232,6 +232,7 @@ class CoordinatesView(Viewer):
 
     def __panel__(self):
         return pn.Column(
+            self.size_pane,
             self.summary_pane,
             self.samples_w,
             self.contigs_w,
