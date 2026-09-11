@@ -59,12 +59,12 @@ def sampleinfo():
 
 
 @pytest.fixture(scope="session")
-def gff():
+def annotation():
     return pytest.dname / "data" / "annotation.gff.gz"
 
 
 @pytest.fixture(scope="session")
-def gff_df():
+def annotation_df():
     return pd.DataFrame(
         {
             "seqid": ["chr1", "chr1", "chr2", "chr2"],
@@ -86,8 +86,8 @@ def gff_df():
 
 
 @pytest.fixture(scope="session")
-def gff_df_path(gff_df, tmpdir_factory):
+def annotation_df_path(annotation_df, tmpdir_factory):
     p = tmpdir_factory.mktemp("annotation")
     outfile = p / "annotation.gff"
-    gff_df.to_csv(str(outfile), index=False, header=None, sep="\t")
+    annotation_df.to_csv(str(outfile), index=False, header=None, sep="\t")
     return Path(outfile)
