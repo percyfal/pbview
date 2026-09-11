@@ -344,8 +344,16 @@ class Coordinates:
 
     @property
     def sample_sets(self):
-        """Return sample sets"""
+        """Return sample sets per sample"""
         return self._sample_sets[~self.sample_mask]
+
+    @property
+    def sample_sets_unique(self) -> list[str]:
+        """Return unique sample sets"""
+        values = [config.DEFAULT_SAMPLE_SET]
+        if not np.all(self._sample_sets == config.DEFAULT_SAMPLE_SET):
+            values.extend(sorted(list(set(self._sample_sets))))
+        return values
 
     @property
     def sample_sets_size(self):
@@ -427,6 +435,27 @@ class Coordinates:
             }
         )
 
+    def summary(self) -> pd.DataFrame:
+        """Return a data frame summary of coordinate selection relative to
+        base coordinates."""
+        return pd.DataFrame(
+            [
+                {
+                    "genome_size": self.genome_size,
+                    "selected_size": self.size,
+                    "selected_size (%)": np.round(
+                        self.size / self.genome_size * 100.0, 2
+                    ),
+                    "n_contigs": f"{self.contigs.size}/{self._contigs.size}",
+                    "n_samples": f"{self.samples.size}/{self._samples.size}",
+                    "n_sample_sets": (
+                        f"{len(set(list(self.sample_sets)))}/"
+                        f"{len(set(list(self._sample_sets)))}"
+                    ),
+                }
+            ]
+        )
+
 
 class Track:
     """A representation of a pbzarr data track.
@@ -460,73 +489,98 @@ class Track:
     def __str__(self) -> str:
         return f"Track(name={self.name})"
 
-    def hist(
+
+    @lru_cache(maxsize=64)
+    def _coverage_hist_cached(self, bins: npt.NDArray[int], coord: Coordinates):
+        logger.info("Calculating histogram of coverage for '%s' track", self.name)
+        logger.debug("Current selection: %s", coord)
+        bins = np.asarray(bins)
+        with ProgressBar():
+            hist, bins = da.histogram(self.data(coord).sum("sample")["values"], bins=bins)
+        return hist.compute(), bins
+
+
+    def coverage_hist(
         self,
         bins: npt.NDArray[int],
         coord: Coordinates,
-        *,
-        threshold: int | None = None,
     ):
-        """Calculate histogram for a given number of bins and coordinate state.
-        If threshold is set calculate a thresholded histogram.
+        """Calculate coverage histogram for a given number of bins and coordinate state.
 
         The histogram values are calculated as the sum of values across all samples.
 
         Args:
             bins: number of bins for histogram
             coord: coordinate state for data selection
-            threshold: optional threshold value for thresholded histogram
         Returns:
-            Histogram as a numpy array
+            Histogram, bins as a numpy arrays
         """
-        if threshold is not None:
-            logger.info("Calculating thresholded histogram for '%s' track", self.name)
-            return self._hist_threshold_cached(tuple(bins.tolist()), coord, threshold)
-        logger.info("Calculating histogram of coverage for '%s' track", self.name)
-        return self._hist_cached(tuple(bins.tolist()), coord)
+        return self._coverage_hist_cached(tuple(bins.tolist()), coord)
 
-    @lru_cache(maxsize=16)
-    def _hist_cached(self, bins: npt.NDArray[int], coord: Coordinates):
-        bins = np.asarray(bins)
-        with ProgressBar():
-            hist, _ = da.histogram(self.data(coord).sum("sample")["values"], bins=bins)
-        return hist.compute()
-
-    @lru_cache(maxsize=16)
-    def _hist_threshold_cached(
+    @lru_cache(maxsize=64)
+    def _missingness_hist_cached(
         self, bins: npt.NDArray, coord: Coordinates, threshold: int
     ):
+        logger.info("Calculating missingness histogram for '%s' track", self.name)
+        logger.debug("Current selection: %s", coord)
+        print(bins)
         bins = np.asarray(bins)
+
         with ProgressBar():
-            hist, _ = da.histogram(
-                (self.data(coord).sum("sample")["values"] > threshold).astype(
-                    dtype=np.uint8
-                ),
+            hist, bins = da.histogram(
+                da.sum((self.data(coord)["values"].values > threshold).astype(np.int64),
+                       axis=1),
                 bins=bins,
             )
-        return hist.compute()
+        return hist.compute(), bins
 
-    # FIXME: move? This is really a Coordinates + SelectionState
-    # summary; the only track-related information here is the track
-    # name
+    def missingness_hist(
+        self,
+        bins: npt.NDArray[int],
+        coord: Coordinates,
+        threshold: int = 0,
+    ):
+        """Calculate missingness histogram for a given number of bins
+        and coordinate state.
+
+        The histogram values are calculated as the number of values across all
+        samples greater than threshold.
+
+        Args:
+            bins: number of bins for histogram
+            coord: coordinate state for data selection
+            threshold: threshold value to treat values as missing (default: 0)
+        Returns:
+            Histogram, bins as a numpy arrays
+        """
+        return self._missingness_hist_cached(tuple(bins.tolist()), coord, threshold)
+
+
+    # FIXME: would it be possible to cheaply calculate the *combined*
+    # effect of coverage and missing data filters? This would require
+    # applying selected thresholds to *all* positions jointly and
+    # returning the .dims["position"] attribute. Modifying the
+    # thresholds for the individual histograms is cheap; the joint
+    # operation is not. Would need reactive "UPDATE" button.
+    def size(self):
+        pass
+
+    # FIXME: the size is the size of the filtered coordinates to
+    # indicate the "active genome": the variable name should reflect
+    # this
     def summary(self, coord: Coordinates, lower: int = 0, upper: float = np.inf):
         """Return a track summary of coordinate selection relative to
         base coordinates."""
         df = pd.DataFrame(
             [
                 {
-                    "type": f"{str(self)} Summary",
-                    "track": self.name,
                     "genome_size": coord.genome_size,
-                    "selected_size": coord.size,
-                    "selected_size (%)": np.round(
+                    "active_genome_size": coord.size,
+                    "active_genome_size (%)": np.round(
                         coord.size / coord.genome_size * 100.0, 2
                     ),
-                    "n_samples": coord.samples_size,
-                    "n_contigs": len(coord._contigs),
                     "min_contig_len": lower,
                     "max_contig_len": upper,
-                    "n_contigs_selected": coord.contigs_size,
                 }
             ]
         )
