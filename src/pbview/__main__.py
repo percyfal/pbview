@@ -211,6 +211,7 @@ def serve(path, annotation_file, sampleinfo, port, show, threads, servable, summ
         show=show,
         threads=threads,
         servable=servable,
+        sampleinfo=sampleinfo,
         # cachedir=cachedir,
         verbose=False,
         summarize=summarize,
