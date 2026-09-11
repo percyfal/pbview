@@ -18,9 +18,9 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pbzarr
+import pyranges1 as pr
 import xarray as xr
 import zarr
-import pyranges1 as pr
 from dask.diagnostics import ProgressBar
 
 from pbview import config
@@ -179,6 +179,8 @@ class Coordinates:
         return (
             f"Coordinates(active_contigs={self.contigs.size}/{self._contigs.size}, "
             f"active_samples={self.samples.size}/{self._samples.size}, "
+            f"active_sample_sets={len(set(list(self.sample_sets)))}/"
+            f"{len(set(list(self._sample_sets)))}, "
             f"size={self.size:_} bp)"
         )
 
@@ -320,11 +322,18 @@ class Coordinates:
         """Return a list of reduced slices mapped to position coordinates."""
         if self.active_contig_indices.size == 0:
             return []
-        return pr.PyRanges({
-            "Start": self._offsets[:-1][self.active_contig_indices],
-            "End": self._offsets[1:][self.active_contig_indices],
-            "Chromosome": "Placeholder"
-        }).merge_overlaps(slack=1)[["Start", "End"]].to_numpy().tolist()
+        return (
+            pr.PyRanges(
+                {
+                    "Start": self._offsets[:-1][self.active_contig_indices],
+                    "End": self._offsets[1:][self.active_contig_indices],
+                    "Chromosome": "Placeholder",
+                }
+            )
+            .merge_overlaps(slack=1)[["Start", "End"]]
+            .to_numpy()
+            .tolist()
+        )
 
     @property
     def contigs(self):
@@ -373,20 +382,15 @@ class Coordinates:
     def size(self):
         return np.sum(self.contig_len, dtype=np.int64)
 
-    # def mask_contigs(self, lower: int = 0, upper: int | float = np.inf):
-    #     """Mask contigs by length"""
-    #     self.lower = lower
-    #     self.upper = upper
-    #     self.contig_mask = ~np.array(
-    #         [(x >= lower) & (x <= upper) for x in self._contig_len]
-    #     )
-
-    # def mask_samples(self, samples=None) -> None:
-    #     """Mask samples in argument. Reset mask if no samples"""
-    #     if samples is None:
-    #         self.sample_mask: list[bool] = np.zeros(len(self._samples), dtype=bool)
-    #     else:
-    #         self.sample_mask = np.isin(self._samples, samples)
+    def as_pyranges(self):
+        """Return pyranges object of active contigs"""
+        return pr.PyRanges(
+            {
+                "Chromosome": self.contigs,
+                "Start": np.zeros(self.contigs_size, dtype=np.int64),
+                "End": self.contig_len,
+            }
+        )
 
     def _sample_sets_dataframe(self) -> pd.DataFrame:
         df = pd.DataFrame(
@@ -398,14 +402,16 @@ class Coordinates:
         )
         if not np.all(self._sample_sets == config.DEFAULT_SAMPLE_SET):
             df = pd.concat(
-                df,
-                pd.DataFrame(
-                    {
-                        "sample_sets": self._sample_sets,
-                        "Active": ~self.sample_mask,
-                        "Total": self._samples,
-                    }
-                ),
+                [
+                    df,
+                    pd.DataFrame(
+                        {
+                            "sample set": self._sample_sets,
+                            "Active": ~self.sample_mask,
+                            "Total": self._samples,
+                        }
+                    ),
+                ]
             )
         return df.groupby("sample set").agg({"Active": "sum", "Total": "count"})
 
@@ -489,16 +495,16 @@ class Track:
     def __str__(self) -> str:
         return f"Track(name={self.name})"
 
-
     @lru_cache(maxsize=64)
     def _coverage_hist_cached(self, bins: npt.NDArray[int], coord: Coordinates):
         logger.info("Calculating histogram of coverage for '%s' track", self.name)
         logger.debug("Current selection: %s", coord)
         bins = np.asarray(bins)
         with ProgressBar():
-            hist, bins = da.histogram(self.data(coord).sum("sample")["values"], bins=bins)
+            hist, bins = da.histogram(
+                self.data(coord).sum("sample")["values"], bins=bins
+            )
         return hist.compute(), bins
-
 
     def coverage_hist(
         self,
@@ -528,8 +534,10 @@ class Track:
 
         with ProgressBar():
             hist, bins = da.histogram(
-                da.sum((self.data(coord)["values"].values > threshold).astype(np.int64),
-                       axis=1),
+                da.sum(
+                    (self.data(coord)["values"].values > threshold).astype(np.int64),
+                    axis=1,
+                ),
                 bins=bins,
             )
         return hist.compute(), bins
@@ -554,7 +562,6 @@ class Track:
             Histogram, bins as a numpy arrays
         """
         return self._missingness_hist_cached(tuple(bins.tolist()), coord, threshold)
-
 
     # FIXME: would it be possible to cheaply calculate the *combined*
     # effect of coverage and missing data filters? This would require

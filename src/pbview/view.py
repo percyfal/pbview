@@ -172,13 +172,39 @@ class CoordinatesView(Viewer):
             height=150,
             scroll=True,
         )
-        self.contigs_w =  pn.Column(
-            pn.widgets.MultiChoice.from_param(
-                state.param.contigs,
-                name="Mask contigs"
-            ),
+        self.contigs_w = pn.Column(
+            pn.widgets.MultiChoice.from_param(state.param.contigs, name="Mask contigs"),
             height=150,
             scroll=True,
+        )
+
+        self.size_pane = pn.bind(
+            lambda *_: pn.Column(
+                pn.indicators.LinearGauge(
+                    label="Genome size",
+                    value=self.state.coord.size,
+                    bounds=(0, self.state.coord.genome_size),
+                    horizontal=True,
+                    format="{value} bp",
+                    width=75,
+                    height=int(config.SIDEBAR_WIDTH * 0.9),
+                ),
+                pn.indicators.LinearGauge(
+                    value=np.round(
+                        self.state.coord.size / self.state.coord.genome_size * 100, 2
+                    ),
+                    bounds=(0, 100),
+                    horizontal=True,
+                    format="{value} %",
+                    width=50,
+                    colors=["red"],
+                    height=int(config.SIDEBAR_WIDTH * 0.9),
+                ),
+            ),
+            state.param.lower,
+            state.param.upper,
+            state.param.samples,
+            state.param.contigs,
         )
 
         self.summary_pane = pn.bind(
