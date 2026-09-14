@@ -35,11 +35,8 @@ def test_data_with_contigs(track, coord):
 
 def test_summary(track, coord):
     summary = track.summary(coord)
+    assert summary["genome_size_all"][0] == 2_700_000
     assert summary["genome_size"][0] == 2_700_000
-    assert summary["selected_size"][0] == 2_700_000
-    assert summary["n_samples"][0] == 7
-    assert summary["n_contigs"][0] == 3
-    assert summary["n_contigs_selected"][0] == 3
 
 
 @pytest.mark.parametrize(
@@ -48,31 +45,8 @@ def test_summary(track, coord):
         (
             {"contigs": ["chr1"]},
             {
-                "genome_size": 2_700_000,
-                "selected_size": 1_000_000,
-                "n_samples": 7,
-                "n_contigs": 3,
-                "n_contigs_selected": 1,
-            },
-        ),
-        (
-            {"lower": 950_000},
-            {
-                "genome_size": 2_700_000,
-                "selected_size": 1_000_000,
-                "n_samples": 7,
-                "n_contigs": 3,
-                "n_contigs_selected": 1,
-            },
-        ),
-        (
-            {"upper": 950_000},
-            {
-                "genome_size": 2_700_000,
-                "selected_size": 1_700_000,
-                "n_samples": 7,
-                "n_contigs": 3,
-                "n_contigs_selected": 2,
+                "genome_size_all": 2_700_000,
+                "genome_size": 1_000_000,
             },
         ),
     ],
@@ -84,31 +58,58 @@ def test_summary_with_contigs(track, coord, args, expected):
         assert summary[key][0] == value
 
 
+@pytest.mark.parametrize(
+    argnames="args,expected",
+    argvalues=[
+        (
+            {"lower": 950_000},
+            {
+                "genome_size_all": 2_700_000,
+                "genome_size": 1_000_000,
+            },
+        ),
+        (
+            {"upper": 950_000},
+            {
+                "genome_size_all": 2_700_000,
+                "genome_size": 1_700_000,
+            },
+        ),
+    ],
+)
+def test_summary_with_length_filters(track, coord, args, expected):
+    coord = coord.with_length_filter(**args)
+    summary = track.summary(coord)
+    for key, value in expected.items():
+        assert summary[key][0] == value
+
+
 def test_lru_cache(track, coord):
     bins = np.arange(0, 11)
-    track.hist(bins=bins, coord=coord)
-    assert track._hist_cached.cache_info().hits == 0
-    track.hist(bins=bins, coord=coord)
-    assert track._hist_cached.cache_info().hits == 1
+    track.coverage_hist(bins=bins, coord=coord)
+    assert track._coverage_hist_cached.cache_info().hits == 0
+    track.coverage_hist(bins=bins, coord=coord)
+    assert track._coverage_hist_cached.cache_info().hits == 1
     bins = np.arange(0, 10)
-    track.hist(bins=bins, coord=coord)
-    assert track._hist_cached.cache_info().hits == 1
-    track.hist(bins=bins, coord=coord)
-    assert track._hist_cached.cache_info().hits == 2
+    track.coverage_hist(bins=bins, coord=coord)
+    assert track._coverage_hist_cached.cache_info().hits == 1
+    track.coverage_hist(bins=bins, coord=coord)
+    assert track._coverage_hist_cached.cache_info().hits == 2
 
 
-def test_hist(track, coord):
+def test_coverage_hist(track, coord):
     bins = np.arange(0, 11)
-    data = track.hist(bins=bins, coord=coord)
+    data, _ = track.coverage_hist(bins=bins, coord=coord)
     assert data[0] == 98944
-    data = track.hist(bins=bins, coord=coord.with_contigs(["chr1"]))
+    data, _ = track.coverage_hist(bins=bins, coord=coord.with_contigs(["chr1"]))
     assert data[0] == 64346
 
 
-def test_hist_thresholded(track, coord):
+def test_missingness_hist(track, coord):
     bins = np.arange(0, 11)
-    data = track.hist(bins=bins, coord=coord, threshold=0)
-    assert data[0] == 99285
-    data = track.hist(bins=bins, coord=coord, threshold=2)
-    assert data[0] == 130909
-    data = track.hist(bins=bins, coord=coord, threshold=10)
+    data, _ = track.missingness_hist(bins=bins, coord=coord, threshold=0)
+    print(data)
+    assert data[0] == 98956
+    data, _ = track.missingness_hist(bins=bins, coord=coord, threshold=2)
+    assert data[0] == 146716
+    data, _ = track.missingness_hist(bins=bins, coord=coord, threshold=10)

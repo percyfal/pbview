@@ -54,11 +54,11 @@ class SelectionStateBase(param.Parameterized):
         self.datastore = datastore
 
         # Populate selector objects
-        self.param.samples.objects = list(datastore.base_coord._samples)
-        self.samples = list(datastore.base_coord._samples)
-        self.param.contigs.objects = list(datastore.base_coord._contigs)
-        self.contigs = list(datastore.base_coord._contigs)
-        self.param.missingness.bounds = (0, self.coord.samples_size)
+        self.param.samples.objects = list(datastore.base_coord._samples_all)
+        self.samples = list(datastore.base_coord._samples_all)
+        self.param.contigs.objects = list(datastore.base_coord._contigs_all)
+        self.contigs = list(datastore.base_coord._contigs_all)
+        self.param.missingness.bounds = (0, self.coord.n_samples_all)
 
         tracks = list(datastore.tracks.keys())
         self.param.active_track.objects = tracks
@@ -114,19 +114,19 @@ class SelectionStateBase(param.Parameterized):
     def sample_sets_df(self):
         df = pd.DataFrame(
             {
-                "sample set": self.coord._default_sample_sets,
+                "sample set": self.coord._default_sample_set_membership,
                 "Active": ~self.coord.sample_mask,
-                "Total": self.coord._samples,
+                "Total": self.coord._samples_all,
             }
         )
-        if not np.all(self.coord._sample_sets == config.DEFAULT_SAMPLE_SET):
+        if not np.all(self.coord._sample_set_membership == config.DEFAULT_SAMPLE_SET):
             df = pd.concat(
                 df,
                 pd.DataFrame(
                     {
-                        "sample_sets": self.coord._sample_sets,
+                        "sample_sets": self.coord._sample_set_membership,
                         "Active": ~self.coord.sample_mask,
-                        "Total": self.coord._samples,
+                        "Total": self.coord._samples_all,
                     }
                 ),
             )
@@ -141,17 +141,18 @@ class SelectionStateBase(param.Parameterized):
         return self.datastore.tracks[self.active_track]
 
 
-def make_selection_state(
+def make_selection_state_class(
     base_coord: Coordinates, max_coverage: int = 1000
 ) -> type[SelectionStateBase]:
     params = {}
-    for s in base_coord.sample_sets_unique:
+    sample_sets = base_coord.sample_set_names
+    for s in sample_sets:
         params[f"lower_coverage_{s}"] = param.Integer(default=0, bounds=(0, None))
         params[f"upper_coverage_{s}"] = param.Integer(
             default=max_coverage, bounds=(0, None)
         )
         params[f"missingness_{s}"] = param.Integer(
-            default=0, bounds=(0, base_coord.with_sample_sets([s]).samples_size)
+            default=0, bounds=(0, base_coord.with_sample_sets([s]).n_samples_all)
         )
 
     return type("SelectionState", (SelectionStateBase,), params)
@@ -180,12 +181,12 @@ class CoordinatesView(Viewer):
             scroll=True,
         )
 
-        self.size_pane = pn.bind(
+        self.genome_size_pane = pn.bind(
             lambda *_: pn.Column(
                 pn.indicators.LinearGauge(
                     label="Genome size",
-                    value=self.state.coord.size,
-                    bounds=(0, self.state.coord.genome_size),
+                    value=self.state.coord.genome_size,
+                    bounds=(0, self.state.coord.genome_size_all),
                     horizontal=True,
                     format="{value} bp",
                     width=75,
@@ -193,7 +194,10 @@ class CoordinatesView(Viewer):
                 ),
                 pn.indicators.LinearGauge(
                     value=np.round(
-                        self.state.coord.size / self.state.coord.genome_size * 100, 2
+                        self.state.coord.genome_size
+                        / self.state.coord.genome_size_all
+                        * 100,
+                        2,
                     ),
                     bounds=(0, 100),
                     horizontal=True,
@@ -234,7 +238,7 @@ class CoordinatesView(Viewer):
 
     def __panel__(self):
         return pn.Column(
-            self.size_pane,
+            self.genome_size_pane,
             self.summary_pane,
             self.samples_w,
             self.contigs_w,
@@ -250,10 +254,12 @@ class CoordinatesView(Viewer):
 class TrackView(Viewer, param.ParameterizedABC):
     """Base abstract class for track views"""
 
-    def __init__(self, track: Track, state: SelectionStateBase, **params):
+    state = param.ClassSelector(class_=SelectionStateBase)
+
+    def __init__(self, track: Track, **params):
         super().__init__(**params)
         self.track = track
-        self.state = state
+        # self.state = state
 
     @abstractmethod
     def __panel__(self) -> Any:
@@ -293,21 +299,22 @@ class TrackCoverageView(_TrackPlotView):
         )
 
     @property
+    def coord(self):
+        return self.state.coord.with_sample_sets(sample_sets=[self.sample_set])
+
+    @property
     def bins(self):
         return np.arange(self.maxbins + 2)
 
     def _data(self):
-        if self.sample_set == config.DEFAULT_SAMPLE_SET:
-            sample_sets = list(set(self.state.coord.sample_sets))
-        else:
-            sample_sets = [self.sample_set]
         counts, bins = self.track.coverage_hist(
-            bins=self.bins, coord=self.state.coord.with_sample_sets(sample_sets)
+            bins=self.bins,
+            coord=self.coord,
         )
         bins = bins[:-1]
         self._df = pd.DataFrame({"bins": bins, "counts": counts})
 
-    @param.depends("maxbins", "plot_type")
+    @param.depends("maxbins", "plot_type", "state.coord")
     def hist(self, *_):
         self._data()
         # func = getattr(self.data.hvplot, "area")
@@ -351,7 +358,7 @@ class TrackMissingnessView(_TrackPlotView):
     def __init__(self, **params):
         super().__init__(**params)
         self._df = None
-        self.maxbins = self.state.coord.samples_size
+        self.maxbins = self.state.coord.n_samples
         self.compute_accessible = pn.bind(
             self._compute_accessible,
             self.state.param.missingness,
@@ -364,16 +371,16 @@ class TrackMissingnessView(_TrackPlotView):
         bins = bins[:-1]
         sample_sets = np.repeat(config.DEFAULT_SAMPLE_SET, len(counts))
         df = pd.DataFrame({"bins": bins, "counts": counts, "sampleset": sample_sets})
-        for sample_set in list(set(self.state.coord.sample_sets)):
+        for sample_set in self.state.coord.sample_set_names:
             _counts, _bins = self.track.missingness_hist(
                 bins=self.bins,
                 coord=self.state.coord.with_sample_sets([sample_set]),
                 threshold=self.missingness_threshold,
             )
             _bins = _bins[:-1]
-            _sample_sets = np.repeat(sample_set, len(_counts))
+            _sample_set_membership = np.repeat(sample_set, len(_counts))
             _df = pd.DataFrame(
-                {"bins": _bins, "counts": _counts, "sampleset": _sample_sets}
+                {"bins": _bins, "counts": _counts, "sampleset": _sample_set_membership}
             )
             df = pd.concat([df, _df], ignore_index=True)
         self._df = df
@@ -401,8 +408,6 @@ class TrackMissingnessView(_TrackPlotView):
 
     def _compute_accessible(self, missingness):
         self._data()
-        print("Missingness: ", missingness)
-        print(self.state.coord.sample_sets_unique)
         counts = self._df["counts"]
         return np.sum(counts[missingness:])
 
@@ -416,15 +421,16 @@ class DataStoreView(Viewer):
 
     def __init__(self, datastore, active_track="depth", **params):
         super().__init__(**params)
-        SelectionState = make_selection_state(base_coord=datastore.base_coord)
+        SelectionState = make_selection_state_class(base_coord=datastore.base_coord)
         self.state = SelectionState(datastore=datastore, active_track=active_track)
         self.title = datastore.title
         self.cv = CoordinatesView(state=self.state)
+
         self.track_coverage_view = {
             s: TrackCoverageView(
                 track=self.state.track(), state=self.state, sample_set=s
             )
-            for s in self.state.coord.sample_sets_unique
+            for s in self.state.coord.sample_set_names
         }
         self.track_missingness_view = TrackMissingnessView(
             track=self.state.track(), state=self.state
@@ -445,7 +451,7 @@ class DataStoreView(Viewer):
             pn.GridBox(
                 *[
                     self.track_coverage_view[s]
-                    for s in self.state.coord.sample_sets_unique
+                    for s in self.state.coord.sample_set_names
                 ],
                 ncols=2,
             ),

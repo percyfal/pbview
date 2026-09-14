@@ -121,6 +121,11 @@ class Coordinates:
 
     The full coordinate set is saved in private variables, meaning a
     `Coordinates` object always has access to the full data view.
+
+    Variable and function names with suffix `_all` refer to the full
+    coordinate set, while those without suffix refer to the active
+    subset.
+
     """
 
     def __init__(
@@ -133,62 +138,71 @@ class Coordinates:
         sample_mask: npt.NDArray[np.bool_] | None = None,
         contig_mask: npt.NDArray[np.bool_] | None = None,
     ) -> None:
-        self._samples: npt.NDArray = np.asarray(samples)
-        self._contigs: npt.NDArray = np.asarray(contigs)
+        self._samples_all: npt.NDArray = np.asarray(samples)
+        self._contigs_all: npt.NDArray = np.asarray(contigs)
         self._offsets: npt.NDArray[np.int64] = np.asarray(offsets, dtype=np.int64)
         # Masks: True = hidden. Default = keep everything
-        n_s, n_c = self._samples.size, self._contigs.size
+        n_samples_all, n_contigs_all = self._samples_all.size, self._contigs_all.size
         self.sample_mask: npt.NDArray[np.bool_] = (
-            np.zeros(n_s, dtype=bool)
+            np.zeros(n_samples_all, dtype=bool)
             if sample_mask is None
             else np.asarray(sample_mask, dtype=bool)
         )
         self.contig_mask: npt.NDArray[np.bool_] = (
-            np.zeros(n_c, dtype=bool)
+            np.zeros(n_contigs_all, dtype=bool)
             if contig_mask is None
             else np.asarray(contig_mask, dtype=bool)
         )
-        self._default_sample_sets: npt.NDArray = np.repeat(
-            config.DEFAULT_SAMPLE_SET, self._samples.size
+        self._default_sample_set_membership: npt.NDArray = np.repeat(
+            config.DEFAULT_SAMPLE_SET, self._samples_all.size
         )
-        self._sample_sets: npt.NDArray = np.asarray(
-            self._default_sample_sets if sample_sets is None else sample_sets
+        self._sample_set_membership: npt.NDArray = np.asarray(
+            self._default_sample_set_membership if sample_sets is None else sample_sets
+        )
+        user_sample_set_names = (
+            [] if sample_sets is None else sorted(list(set(self.sample_set_membership)))
+        )
+        self.user_sample_set_names = np.asarray(user_sample_set_names)
+        self.sample_set_names = np.asarray(
+            [config.DEFAULT_SAMPLE_SET] + user_sample_set_names
         )
         # Freeze the underlying arrays to catch accidental mutation.
         for arr in (
-            self._samples,
-            self._contigs,
+            self._samples_all,
+            self._contigs_all,
             self._offsets,
             self.sample_mask,
             self.contig_mask,
-            self._default_sample_sets,
-            self._sample_sets,
+            self._default_sample_set_membership,
+            self._sample_set_membership,
+            self.user_sample_set_names,
+            self.sample_set_names,
         ):
             arr.setflags(write=False)
 
     def __str__(self):
         return (
             f"Coordinates summary:\n"
-            f"  Samples: {len(self.samples)} ({len(self._samples)})\n"
-            f"  Contigs: {len(self.contigs)} ({len(self._contigs)})\n"
-            f"  Sample sets: {len(set(list(self.sample_sets)))} "
-            f"({len(set(list(self._sample_sets)))})\n"
+            f"  Samples: {self.n_samples} ({self.n_samples_all})\n"
+            f"  Contigs: {self.n_contigs} ({self.n_contigs_all})\n"
+            f"  Sample sets: {self.n_user_sample_sets} "
+            f"({self.n_user_sample_sets_all})\n"
         )
 
     def __repr__(self) -> str:
         return (
-            f"Coordinates(active_contigs={self.contigs.size}/{self._contigs.size}, "
-            f"active_samples={self.samples.size}/{self._samples.size}, "
-            f"active_sample_sets={len(set(list(self.sample_sets)))}/"
-            f"{len(set(list(self._sample_sets)))}, "
-            f"size={self.size:_} bp)"
+            f"Coordinates(contigs={self.n_contigs}/{self.n_contigs_all}, "
+            f"samples={self.n_samples}/{self.n_samples_all}, "
+            f"sample_sets={self.n_user_sample_sets}/"
+            f"{self.n_user_sample_sets_all}, "
+            f"selected_size={self.selected_size} bp)"
         )
 
     def __hash__(self) -> int:
         return hash(
             (
-                id(self._samples),
-                id(self._contigs),
+                id(self._samples_all),
+                id(self._contigs_all),
                 id(self._offsets),
                 self.sample_mask.tobytes(),
                 self.contig_mask.tobytes(),
@@ -203,11 +217,11 @@ class Coordinates:
     ) -> "Coordinates":
         """Return a new instance sharing raw data, with new masks."""
         new = self.__class__.__new__(self.__class__)
-        new._samples = self._samples
-        new._contigs = self._contigs
+        new._samples_all = self._samples_all
+        new._contigs_all = self._contigs_all
         new._offsets = self._offsets
-        new._default_sample_sets = self._default_sample_sets
-        new._sample_sets = self._sample_sets
+        new._default_sample_set_membership = self._default_sample_set_membership
+        new._sample_set_membership = self._sample_set_membership
         new.sample_mask = (
             self.sample_mask
             if sample_mask is None
@@ -220,6 +234,10 @@ class Coordinates:
         )
         new.sample_mask.setflags(write=False)
         new.contig_mask.setflags(write=False)
+        new.user_sample_set_names = np.asarray(
+            sorted(list(set(new.sample_set_membership)))
+        )
+        new.sample_set_names = self.sample_set_names  # FIXME: is this wrong?
         return new
 
     # Factory methods
@@ -241,7 +259,7 @@ class Coordinates:
         """Keep only listed contigs. `None` resets the contig mask."""
         if contigs is None:
             return self._replace(contig_mask=np.zeros_like(self.contig_mask))
-        keep = np.isin(self._contigs, np.asarray(list(contigs))) & ~self.contig_mask
+        keep = np.isin(self._contigs_all, np.asarray(list(contigs))) & ~self.contig_mask
         return self._replace(contig_mask=~keep)
 
     def with_samples(
@@ -251,14 +269,16 @@ class Coordinates:
         """Keep only listed samples. `None` resets the sample mask."""
         if samples is None:
             return self._replace(sample_mask=np.zeros_like(self.sample_mask))
-        keep = np.isin(self._samples, np.asarray(list(samples))) & ~self.sample_mask
+        keep = np.isin(self._samples_all, np.asarray(list(samples))) & ~self.sample_mask
         return self._replace(sample_mask=~keep)
 
     def with_sample_sets(self, sample_sets: list[str]):
         """Keep only listed sample sets. `None` resets the sample mask."""
+        if self.default_sample_set_name in sample_sets:
+            return self
         if sample_sets is None:
             return self._replace(sample_mask=np.zeros_like(self.sample_mask))
-        keep = np.isin(self._sample_sets, sample_sets) & ~self.sample_mask
+        keep = np.isin(self._sample_set_membership, sample_sets) & ~self.sample_mask
         return self._replace(sample_mask=~keep)
 
     def reset(self, *, samples: bool = True, contigs: bool = True) -> "Coordinates":
@@ -276,14 +296,6 @@ class Coordinates:
             contig_mask=np.zeros_like(self.contig_mask),
         )
 
-    @cached_property
-    def _contig_len_all(self) -> npt.NDArray[np.uint32]:
-        return np.diff(self._offsets).astype(np.uint32)
-
-    @property
-    def contig_mask_is_active(self) -> bool:
-        return bool(np.any(self.contig_mask))
-
     @classmethod
     def from_datatree(
         cls, group: xr.DataTree, sample_sets: npt.ArrayLike | None = None
@@ -296,30 +308,42 @@ class Coordinates:
             sample_sets=sample_sets,
         )
 
+    @cached_property
+    def _contig_len_all(self) -> npt.NDArray[np.uint32]:
+        return np.diff(self._offsets).astype(np.uint32)
+
+    @property
+    def contig_len_all(self):
+        return self._contig_len_all
+
     @property
     def contig_len(self):
         return self._contig_len_all[~self.contig_mask]
 
     @property
+    def contig_mask_is_active(self) -> bool:
+        return bool(np.any(self.contig_mask))
+
+    @property
     def contig_idx(self) -> dict:
         """Return a dict mapping of chromosome to index.
         Returns the mapping for the full set of contigs"""
-        return {c: i for i, c in enumerate(self._contigs)}
+        return {c: i for i, c in enumerate(self._contigs_all)}
 
     @cached_property
-    def active_contig_indices(self) -> npt.NDArray[np.int64]:
-        """Original-vector indices of currently active contigs."""
+    def contig_indices(self) -> npt.NDArray[np.int64]:
+        """Original-vector indices of currently selected contigs."""
         return np.flatnonzero(~self.contig_mask).astype(np.int64)
 
     def contig_slices(self) -> list[np.array[int]] | None:
         """Return a list of reduced slices mapped to position coordinates."""
-        if self.active_contig_indices.size == 0:
+        if self.contig_indices.size == 0:
             return []
         return (
             pr.PyRanges(
                 {
-                    "Start": self._offsets[:-1][self.active_contig_indices],
-                    "End": self._offsets[1:][self.active_contig_indices],
+                    "Start": self._offsets[:-1][self.contig_indices],
+                    "End": self._offsets[1:][self.contig_indices],
                     "Chromosome": "Placeholder",
                 }
             )
@@ -330,77 +354,91 @@ class Coordinates:
 
     @property
     def contigs(self):
-        return self._contigs[~self.contig_mask]
+        return self._contigs_all[~self.contig_mask]
 
     @property
-    def contigs_size(self):
-        return int(self.contigs.size)
+    def n_contigs(self):
+        return self.contigs.size
+
+    @property
+    def n_contigs_all(self):
+        return int(self._contigs_all.size)
 
     @property
     def samples(self):
-        return self._samples[~self.sample_mask]
+        return self._samples_all[~self.sample_mask]
 
     @property
-    def samples_size(self):
+    def n_samples(self):
         return int(self.samples.size)
 
     @property
-    def sample_sets(self):
+    def n_samples_all(self):
+        return int(self._samples_all.size)
+
+    @property
+    def sample_set_membership(self):
         """Return sample sets per sample"""
-        return self._sample_sets[~self.sample_mask]
+        return self._sample_set_membership[~self.sample_mask]
 
     @property
-    def sample_sets_unique(self) -> list[str]:
-        """Return unique sample sets"""
-        return sorted(list(set(self._sample_sets)))
+    def default_sample_set_membership(self):
+        return (self._default_sample_set_membership[~self.sample_mask],)
 
     @property
-    def sample_sets_size(self):
-        """Return sample sets size"""
-        return int(len(set(self.sample_sets)))
+    def n_sample_sets(self):
+        """Return sample sets size, including the default set."""
+        return self.sample_set_names.size
 
     @property
-    def default_sample_sets(self):
-        """Return default sample sets"""
-        return (self._default_sample_sets[~self.sample_mask],)
+    def n_user_sample_sets(self):
+        """Return user sample sets size"""
+        return self.user_sample_set_names.size
 
     @property
     def default_sample_set_name(self) -> str:
-        return config.DEFALT_SAMPLE_SET
+        return self.sample_set_names[0]
+
+    @property
+    def has_sample_sets(self):
+        """Return True if there are any sample sets other than the default set."""
+        return self.n_user_sample_sets > 1
 
     @cached_property
     def genome_size(self):
-        return np.sum(self._contig_len_all, dtype=np.int64)
+        """Return the selected genome size. This is not a fixed entity"""
+        return np.sum(self.contig_len, dtype=np.int64)
 
     @property
-    def size(self):
-        return np.sum(self.contig_len, dtype=np.int64)
+    def genome_size_all(self):
+        """Return the total genome size, including masked contigs"""
+        return np.sum(self.contig_len_all, dtype=np.int64)
 
     def as_pyranges(self):
         """Return pyranges object of active contigs"""
         return pr.PyRanges(
             {
                 "Chromosome": self.contigs,
-                "Start": np.zeros(self.contigs_size, dtype=np.int64),
+                "Start": np.zeros(self.n_contigs, dtype=np.int64),
                 "End": self.contig_len,
             }
         )
 
-    def _sample_sets_dataframe(self) -> pd.DataFrame:
+    def _sample_set_membership_dataframe(self) -> pd.DataFrame:
         df = pd.DataFrame(
             {
-                "sample set": self._default_sample_sets,
+                "sample set": self._default_sample_set_membership,
                 "Active": ~self.sample_mask,
-                "Total": self._samples,
+                "Total": self._samples_all,
             }
         )
-        if not np.all(self._sample_sets == config.DEFAULT_SAMPLE_SET):
+        if not self.has_sample_sets:
             df = pd.concat(
                 [
                     df,
                     pd.DataFrame(
                         {
-                            "sample set": self._sample_sets,
+                            "sample set": self._sample_set_membership,
                             "Active": ~self.sample_mask,
                             "Total": self._samples,
                         }
@@ -412,8 +450,8 @@ class Coordinates:
     def _coordinates_dataframe(self) -> pd.DataFrame:
         return pd.DataFrame(
             [
-                [len(self.contigs), len(self._contigs)],
-                [len(self.samples), len(self._samples)],
+                [self.n_contigs, self.n_contigs_all],
+                [self.n_samples, self.n_samples_all],
             ],
             columns=["Active", "Total"],
             index=["Contigs", "Samples"],
@@ -422,7 +460,7 @@ class Coordinates:
     def to_dataframe(self) -> pd.DataFrame:
         """Return DataFrame summary of active samples, contigs and sample sets."""
         return pd.concat(
-            [self._coordinates_dataframe(), self._sample_sets_dataframe()],
+            [self._coordinates_dataframe(), self._sample_set_membership_dataframe()],
             keys=["Coordinates", "Sample sets"],
             names=["Type", "Label"],
         )
@@ -441,16 +479,15 @@ class Coordinates:
         return pd.DataFrame(
             [
                 {
+                    "genome_size_all": self.genome_size_all,
                     "genome_size": self.genome_size,
-                    "selected_size": self.size,
-                    "selected_size (%)": np.round(
-                        self.size / self.genome_size * 100.0, 2
+                    "genome_size (%)": np.round(
+                        self.genome_size / self.genome_size_all * 100.0, 2
                     ),
-                    "n_contigs": f"{self.contigs.size}/{self._contigs.size}",
-                    "n_samples": f"{self.samples.size}/{self._samples.size}",
-                    "n_sample_sets": (
-                        f"{len(set(list(self.sample_sets)))}/"
-                        f"{len(set(list(self._sample_sets)))}"
+                    "n_contigs": f"{self.n_contigs}/{self.n_contigs_all}",
+                    "n_samples": f"{self.n_samples}/{self.n_samples_all}",
+                    "n_sample_set_membership": (
+                        f"{self.n_user_sample_sets}/{self.n_user_sample_sets_all}"
                     ),
                 }
             ]
@@ -477,14 +514,14 @@ class Track:
         res = self._data.sel(sample=coord.samples)
         if not coord.contig_mask_is_active:
             return res
-        if coord.contigs_size == 0:
+        if coord.n_contigs == 0:
             return self._data.sel(position=[])
         parts = [res.isel(position=slice(a, b)) for a, b in coord.contig_slices()]
 
         return xr.concat(parts, dim="position") if len(parts) > 1 else parts[0]
 
     def __repr__(self) -> str:
-        return f"<Track(name={self.name}, data={self.data()})>"
+        return f"<Track(name={self.name})>"
 
     def __str__(self) -> str:
         return f"Track(name={self.name})"
@@ -523,7 +560,6 @@ class Track:
     ):
         logger.info("Calculating missingness histogram for '%s' track", self.name)
         logger.debug("Current selection: %s", coord)
-        print(bins)
         bins = np.asarray(bins)
 
         with ProgressBar():
@@ -575,10 +611,10 @@ class Track:
         df = pd.DataFrame(
             [
                 {
+                    "genome_size_all": coord.genome_size_all,
                     "genome_size": coord.genome_size,
-                    "active_genome_size": coord.size,
-                    "active_genome_size (%)": np.round(
-                        coord.size / coord.genome_size * 100.0, 2
+                    "genome_size (%)": np.round(
+                        coord.genome_size / coord.genome_size_all * 100.0, 2
                     ),
                     "min_contig_len": lower,
                     "max_contig_len": upper,
