@@ -4,10 +4,9 @@ Datastore model
 
 __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
-__data__ = "2026-09-01"
+__date__ = "2026-09-01"
 
 import json
-import re
 from collections.abc import Iterable
 from functools import cached_property, lru_cache
 from pathlib import Path
@@ -27,55 +26,6 @@ from pbview import config
 from pbview.logging import app_logger as logger
 
 xr.set_options(display_expand_attrs=False)
-
-
-def import_d4(
-    path: Path | str,
-    d4: list[Path] | list[str],
-    *,
-    track: str = "depth",
-    workers: int = 1,
-    progress: bool = True,
-) -> None:
-    """Import d4 files to pbzarr store.
-
-    This function will create a new pbzarr store at `path` and add
-    tracks by importing data from the specified sources.
-    """
-    # Create the pbzarr store
-    if Path(path).exists():
-        logger.debug("Path %s already exists, not creating store", path)
-    else:
-        logger.info("Creating pbzarr store at %s", path)
-        pbzarr.create_store(path)
-
-    sources: list[tuple[str, str]] = []
-    for fn in d4:
-        if not re.search(r".d4$", fn):
-            raise ValueError(f"Input file {fn} does not have .d4 extension")
-        fn = Path(fn)
-        sample = re.sub(".per-base.d4", "", fn.name)
-        sources.append((str(fn), sample))
-
-    # Import data into the store
-    logger.info("Importing %i data sources", len(sources))
-    try:
-        report = pbzarr.import_d4(
-            destination=str(path),
-            track=track,
-            sources=sources,
-            workers=workers,
-            progress=progress,
-            chunk_size=1_000_000,
-            column_dim="sample",
-        )
-    except pbzarr.PbzError as e:
-        logger.error("Error importing d4 files: %s", e)
-        raise
-    except Exception as e:
-        logger.error("Error importing d4 files: %s", e)
-        logger.error(report)
-        raise
 
 
 class NpEncoder(json.JSONEncoder):
@@ -180,22 +130,23 @@ class Coordinates:
         ):
             arr.setflags(write=False)
 
+    # FIXME: add n_user_sample_sets_all
     def __str__(self):
         return (
             f"Coordinates summary:\n"
             f"  Samples: {self.n_samples} ({self.n_samples_all})\n"
             f"  Contigs: {self.n_contigs} ({self.n_contigs_all})\n"
             f"  Sample sets: {self.n_user_sample_sets} "
-            f"({self.n_user_sample_sets_all})\n"
+            # f"({self.n_user_sample_sets_all})\n"
         )
 
     def __repr__(self) -> str:
         return (
             f"Coordinates(contigs={self.n_contigs}/{self.n_contigs_all}, "
             f"samples={self.n_samples}/{self.n_samples_all}, "
-            f"sample_sets={self.n_user_sample_sets}/"
-            f"{self.n_user_sample_sets_all}, "
-            f"selected_size={self.selected_size} bp)"
+            f"sample_sets={self.n_user_sample_sets}/###, "
+            # f"{self.n_user_sample_sets_all}, "
+            f"genome_size={self.genome_size} bp)"
         )
 
     def __hash__(self) -> int:
@@ -234,17 +185,18 @@ class Coordinates:
         )
         new.sample_mask.setflags(write=False)
         new.contig_mask.setflags(write=False)
-        new.user_sample_set_names = np.asarray(
-            sorted(list(set(new.sample_set_membership)))
+        user_sample_set_names = sorted(list(set(new.sample_set_membership)))
+        new.user_sample_set_names = np.asarray(user_sample_set_names)
+        new.sample_set_names = np.asarray(
+            [config.DEFAULT_SAMPLE_SET] + user_sample_set_names
         )
-        new.sample_set_names = self.sample_set_names  # FIXME: is this wrong?
         return new
 
     # Factory methods
     def with_length_filter(
         self, lower: int = 0, upper: float = np.inf
     ) -> "Coordinates":
-        """Return a new Coordinates whose contigs satisfy lower ≤ len ≤ upper."""
+        """Return a new Coordinates whose contigs satisfy lower <= len <= upper."""
         keep = (
             (self._contig_len_all >= lower)
             & (self._contig_len_all <= upper)
@@ -361,11 +313,11 @@ class Coordinates:
         return self.contigs.size
 
     @property
-    def n_contigs_all(self):
+    def n_contigs_all(self) -> int:
         return int(self._contigs_all.size)
 
     @property
-    def samples(self):
+    def samples(self) -> Any:
         return self._samples_all[~self.sample_mask]
 
     @property
@@ -402,7 +354,7 @@ class Coordinates:
     @property
     def has_sample_sets(self):
         """Return True if there are any sample sets other than the default set."""
-        return self.n_user_sample_sets > 1
+        return self.n_user_sample_sets > 0
 
     @cached_property
     def genome_size(self):
@@ -424,30 +376,40 @@ class Coordinates:
             }
         )
 
-    def _sample_set_membership_dataframe(self) -> pd.DataFrame:
+    def sample_set_membership_dataframe(self, *, active_only=False) -> pd.DataFrame:
         df = pd.DataFrame(
             {
-                "sample set": self._default_sample_set_membership,
-                "Active": ~self.sample_mask,
-                "Total": self._samples_all,
+                "sample_set": self._default_sample_set_membership,
+                "active": ~self.sample_mask,
+                "sample": self._samples_all,
             }
         )
-        if not self.has_sample_sets:
+        if self.has_sample_sets:
             df = pd.concat(
                 [
                     df,
                     pd.DataFrame(
                         {
-                            "sample set": self._sample_set_membership,
-                            "Active": ~self.sample_mask,
-                            "Total": self._samples,
+                            "sample_set": self._sample_set_membership,
+                            "active": ~self.sample_mask,
+                            "sample": self._samples_all,
                         }
                     ),
                 ]
             )
-        return df.groupby("sample set").agg({"Active": "sum", "Total": "count"})
+        if active_only:
+            df = df[df.active]
+        return df
 
-    def _coordinates_dataframe(self) -> pd.DataFrame:
+    def sample_set_summary(self) -> pd.DataFrame:
+        return (
+            self.sample_set_membership_dataframe()
+            .groupby("sample_set")
+            .agg({"active": "sum", "sample": "count"})
+            .rename({"active": "Active", "sample": "Total"}, axis=1)
+        )
+
+    def coordinates_dataframe(self) -> pd.DataFrame:
         return pd.DataFrame(
             [
                 [self.n_contigs, self.n_contigs_all],
@@ -460,7 +422,7 @@ class Coordinates:
     def to_dataframe(self) -> pd.DataFrame:
         """Return DataFrame summary of active samples, contigs and sample sets."""
         return pd.concat(
-            [self._coordinates_dataframe(), self._sample_set_membership_dataframe()],
+            [self.coordinates_dataframe(), self.sample_set_summary()],
             keys=["Coordinates", "Sample sets"],
             names=["Type", "Label"],
         )
@@ -487,7 +449,7 @@ class Coordinates:
                     "n_contigs": f"{self.n_contigs}/{self.n_contigs_all}",
                     "n_samples": f"{self.n_samples}/{self.n_samples_all}",
                     "n_sample_set_membership": (
-                        f"{self.n_user_sample_sets}/{self.n_user_sample_sets_all}"
+                        f"{self.n_user_sample_sets}"  # /{self.n_user_sample_sets_all}"
                     ),
                 }
             ]
@@ -505,20 +467,11 @@ class Track:
         A Track object.
     """
 
+    TARGET_BYTES = config.TARGET_BYTES
+
     def __init__(self, track_name: str, data: xr.DataTree):
         self.name = track_name
         self._data = data
-
-    def data(self, coord: Coordinates) -> xr.DataArray | xr.Dataset:
-        """Return track data based on `Coordinates` state."""
-        res = self._data.sel(sample=coord.samples)
-        if not coord.contig_mask_is_active:
-            return res
-        if coord.n_contigs == 0:
-            return self._data.sel(position=[])
-        parts = [res.isel(position=slice(a, b)) for a, b in coord.contig_slices()]
-
-        return xr.concat(parts, dim="position") if len(parts) > 1 else parts[0]
 
     def __repr__(self) -> str:
         return f"<Track(name={self.name})>"
@@ -526,16 +479,54 @@ class Track:
     def __str__(self) -> str:
         return f"Track(name={self.name})"
 
+    def _select(self, base: xr.DataArray, coord: Coordinates) -> xr.DataArray:
+        """Apply a Coordinates selection to a given base array."""
+        res = base.sel(sample=coord.samples)
+        if not coord.contig_mask_is_active:
+            return res
+        if coord.n_contigs == 0:
+            return base.sel(position=[])
+        parts = [res.isel(position=slice(a, b)) for a, b in coord.contig_slices()]
+        return xr.concat(parts, dim="position")
+
+    def data(self, coord: Coordinates) -> xr.DataArray:
+        """Default view (original chunking)."""
+        return self._select(self._data, coord)
+
+    def _optimal_chunks(self, reduce_along: str) -> dict:
+        """Return optimal chunk sizes for a dask array based on target bytes."""
+        logger.debug(
+            "Calculating optimal chunks for target bytes: %s", self.TARGET_BYTES
+        )
+        da = self._data["values"]
+        itemsize = da.dtype.itemsize
+        reduce_len = da.sizes[reduce_along]
+        other_dim = next(d for d in da.dims if d != reduce_along)
+        other_chunk = max(1, self.TARGET_BYTES // (reduce_len * itemsize))
+        other_chunk = min(other_chunk, da.sizes[other_dim])
+        return {
+            reduce_along: -1,
+            other_dim: int(other_chunk),
+        }
+
+    @property
+    def _hist_view(self):
+        """Rechunk data for histogram calculations.
+        Ensure chunks are across all samples."""
+        logger.debug("Rechunking data for histogram calculations")
+        return self._data.chunk(self._optimal_chunks("sample"))
+
     @lru_cache(maxsize=64)
     def _coverage_hist_cached(self, bins: npt.NDArray[int], coord: Coordinates):
         logger.info("Calculating histogram of coverage for '%s' track", self.name)
         logger.debug("Current selection: %s", coord)
         bins = np.asarray(bins)
+        max_bin = int(bins[-1])
+        values = self._select(self._hist_view, coord)["values"]
+        sums_clipped = da.minimum(values.astype(np.int64).sum("sample").data, max_bin)
+        hist = da.bincount(sums_clipped, minlength=int(bins[-1]) + 1)
         with ProgressBar():
-            hist, bins = da.histogram(
-                self.data(coord).sum("sample")["values"], bins=bins
-            )
-        return hist.compute(), bins
+            return hist.compute(), bins
 
     def coverage_hist(
         self,
@@ -561,20 +552,14 @@ class Track:
         logger.info("Calculating missingness histogram for '%s' track", self.name)
         logger.debug("Current selection: %s", coord)
         bins = np.asarray(bins)
-
+        values = self._select(self._hist_view, coord)["values"]
+        counts = (values > threshold).astype(np.int64).sum("sample").data
         with ProgressBar():
-            hist, bins = da.histogram(
-                da.sum(
-                    (self.data(coord)["values"].values > threshold).astype(np.int64),
-                    axis=1,
-                ),
-                bins=bins,
-            )
-        return hist.compute(), bins
+            hist = da.bincount(counts, minlength=int(bins[-1])).compute()
+        return hist, bins
 
     def missingness_hist(
         self,
-        bins: npt.NDArray[int],
         coord: Coordinates,
         threshold: int = 0,
     ):
@@ -585,12 +570,12 @@ class Track:
         samples greater than threshold.
 
         Args:
-            bins: number of bins for histogram
             coord: coordinate state for data selection
             threshold: threshold value to treat values as missing (default: 0)
         Returns:
             Histogram, bins as a numpy arrays
         """
+        bins = np.arange(0, coord.n_samples + 1)
         return self._missingness_hist_cached(tuple(bins.tolist()), coord, threshold)
 
     # FIXME: would it be possible to cheaply calculate the *combined*

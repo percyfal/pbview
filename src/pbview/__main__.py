@@ -120,6 +120,14 @@ def max_bins_option(default: int = 1000) -> Callable[[FC], FC]:
     )
 
 
+def chunk_size_option(default: int = 1000000) -> Callable[[FC], FC]:
+    return click.option(
+        "--chunk-size",
+        default=default,
+        help="Chunk size for processing large files. Consider reducing if number of samples is large (n>500).",
+    )
+
+
 def port_option(default: int = 8080) -> Callable[[FC], FC]:
     return click.option("--port", default=default, help="Port to serve on")
 
@@ -171,23 +179,26 @@ def cli():
 @track_name_option()
 @log_level()
 @progress_option()
+@chunk_size_option()
 def import_d4(
     path: Path | str,
     d4: list[Path] | list[str],
     track_name: str,
     workers: int,
     progress: bool,
-):
+    chunk_size: int,
+) -> None:
     """Import d4 files into a pbzarr store."""
     if len(d4) == 0:
         logger.error("Provide at least one d4 source file to import")
         return
-    datastore.import_d4(
+    pbview_cli.import_d4(
         path,
         d4=d4,
         track=track_name,
         workers=workers,
         progress=progress,
+        chunk_size=chunk_size,
     )
 
 
@@ -261,9 +272,34 @@ def summarize(
 #   - a grid of threshold values for the histograms per sample-set; default 0-5?
 #   - sampleinfo such that histograms are pre-computed for all sampleset groupings
 #   - contig length filters to start with sensible contigs (exclude low-complexity)
+#
+# UPDATE: pre-calculate sum / count vectors for all sample sets and
+# store in Zarr store. Will make histogram generation much faster.
 @cli.command()
-def preprocess():
-    pass
+@path_argument(exists=True, dir_okay=True, nargs=1)
+@workers_option(default=1)
+@track_name_option()
+@log_level()
+@progress_option()
+@chunk_size_option()
+@sampleinfo_option()
+def preprocess(
+    path: Path | str,
+    track_name: str,
+    workers: int,
+    progress: bool,
+    chunk_size: int,
+    sampleinfo: str | None = None,
+) -> None:
+    """Preprocess the pbzarr store for faster access."""
+    pbview_cli.preprocess(
+        path,
+        track=track_name,
+        workers=workers,
+        progress=progress,
+        chunk_size=chunk_size,
+        sampleinfo=sampleinfo,
+    )
 
 
 if __name__ == "__main__":

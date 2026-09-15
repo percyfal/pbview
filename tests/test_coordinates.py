@@ -10,9 +10,12 @@ from pbview.datastore import Coordinates
 @dataclass(frozen=True)
 class ExpectedSampleSetsSize:
     default: int
-    sample_sets_size_pop1: int
+    total_pop1: int
+    n_sample_sets_pop1: int
+    n_sampleset_membership_dataframe_pop1: int
+    n_user_sample_sets_pop1: int
     n_samples_pop1: int
-    s1_s2_pop1_sample_size: int
+    n_samples_s1_s2_pop1: int
 
 
 @pytest.fixture(params=["vectors", "DataTree"])
@@ -63,15 +66,21 @@ def expected_sample_set_membership_size(sample_sets):
     if sample_sets is None:
         return ExpectedSampleSetsSize(
             default=1,
-            sample_sets_size_pop1=0,
+            total_pop1=1,
+            n_sampleset_membership_dataframe_pop1=0,
+            n_sample_sets_pop1=1,
+            n_user_sample_sets_pop1=0,
             n_samples_pop1=0,
-            s1_s2_pop1_sample_size=0,
+            n_samples_s1_s2_pop1=0,
         )
     return ExpectedSampleSetsSize(
         default=3,
-        sample_sets_size_pop1=1,
+        total_pop1=2,
+        n_sampleset_membership_dataframe_pop1=2,
+        n_sample_sets_pop1=2,
+        n_user_sample_sets_pop1=1,
         n_samples_pop1=3,
-        s1_s2_pop1_sample_size=2,
+        n_samples_s1_s2_pop1=2,
     )
 
 
@@ -111,13 +120,28 @@ def test_with_sample_sets(coordinates, expected_sample_set_membership_size):
     coord, _ = coordinates
     assert (
         coord.with_sample_sets(sample_sets=["pop1"]).n_user_sample_sets
-        == expected_sample_set_membership_size.sample_sets_size_pop1
+        == expected_sample_set_membership_size.n_user_sample_sets_pop1
+    )
+    assert (
+        coord.with_sample_sets(sample_sets=["pop1"]).n_sample_sets
+        == expected_sample_set_membership_size.n_sample_sets_pop1
     )
     assert (
         coord.with_sample_sets(sample_sets=["pop1"]).n_samples
         == expected_sample_set_membership_size.n_samples_pop1
     )
     assert coord.with_sample_sets(sample_sets=["pop0"]).n_user_sample_sets == 0
+    assert coord.with_sample_sets(sample_sets=["pop0"]).n_sample_sets == 1
+    assert (
+        len(
+            set(
+                coord.with_sample_sets(sample_sets=["pop1"])
+                .sample_set_membership_dataframe(active_only=True)["sample_set"]
+                .values
+            )
+        )
+        == expected_sample_set_membership_size.n_sampleset_membership_dataframe_pop1
+    )
 
 
 def test_with_samples_and_sample_sets(coordinates, expected_sample_set_membership_size):
@@ -132,7 +156,7 @@ def test_with_samples_and_sample_sets(coordinates, expected_sample_set_membershi
         coord.with_samples(["s1", "s2"])
         .with_sample_sets(sample_sets=["pop1"])
         .n_samples
-        == expected_sample_set_membership_size.s1_s2_pop1_sample_size
+        == expected_sample_set_membership_size.n_samples_s1_s2_pop1
     )
 
 

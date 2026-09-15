@@ -6,7 +6,7 @@ import panel as pn
 import pytest
 from pytest import fixture
 
-from pbview import datastore
+from pbview import datastore, cli
 
 dirname = Path(os.path.abspath(os.path.dirname(__file__)))
 
@@ -49,7 +49,7 @@ def d4all(d4file) -> list[Path]:
 def store(tmpdir_factory, d4all):
     p = Path(tmpdir_factory.mktemp("store")) / "datastore.zarr"
     d4all = [str(p) for p in d4all]
-    datastore.import_d4(str(p), d4all)
+    cli.import_d4(str(p), d4all)
     return p
 
 

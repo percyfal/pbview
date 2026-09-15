@@ -4,7 +4,7 @@ Classes for viewing data
 
 __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
-__data__ = "2026-09-01"
+__date__ = "2026-09-01"
 
 from abc import abstractmethod
 from functools import lru_cache
@@ -311,7 +311,6 @@ class TrackCoverageView(_TrackPlotView):
             bins=self.bins,
             coord=self.coord,
         )
-        bins = bins[:-1]
         self._df = pd.DataFrame({"bins": bins, "counts": counts})
 
     @param.depends("maxbins", "plot_type", "state.coord")
@@ -366,18 +365,16 @@ class TrackMissingnessView(_TrackPlotView):
 
     def _data(self):
         counts, bins = self.track.missingness_hist(
-            bins=self.bins, coord=self.state.coord, threshold=self.missingness_threshold
+            coord=self.state.coord, threshold=self.missingness_threshold
         )
-        bins = bins[:-1]
         sample_sets = np.repeat(config.DEFAULT_SAMPLE_SET, len(counts))
         df = pd.DataFrame({"bins": bins, "counts": counts, "sampleset": sample_sets})
         for sample_set in self.state.coord.sample_set_names:
             _counts, _bins = self.track.missingness_hist(
-                bins=self.bins,
                 coord=self.state.coord.with_sample_sets([sample_set]),
                 threshold=self.missingness_threshold,
             )
-            _bins = _bins[:-1]
+            # _bins = _bins[:-1]
             _sample_set_membership = np.repeat(sample_set, len(_counts))
             _df = pd.DataFrame(
                 {"bins": _bins, "counts": _counts, "sampleset": _sample_set_membership}

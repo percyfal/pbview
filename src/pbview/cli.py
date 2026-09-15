@@ -1,4 +1,8 @@
+import re
 from pathlib import Path
+
+import pandas as pd
+import pbzarr
 
 from pbview.datastore import DataStore
 from pbview.logging import app_logger as logger
@@ -32,3 +36,97 @@ def summarize(
     logger.info(pbzstore)
     # track = pbzstore.tracks[trackname]
     # tv = TrackView(track)
+
+
+def import_d4(
+    path: Path | str,
+    d4: list[Path] | list[str],
+    *,
+    track: str = "depth",
+    workers: int = 1,
+    progress: bool = True,
+    chunk_size: int = 1_000_000,
+) -> None:
+    """Import d4 files to pbzarr store.
+
+    This function will create a new pbzarr store at `path` and add
+    tracks by importing data from the specified sources.
+    """
+    # Create the pbzarr store
+    if Path(path).exists():
+        logger.debug("Path %s already exists, not creating store", path)
+    else:
+        logger.info("Creating pbzarr store at %s", path)
+        pbzarr.create_store(path)
+
+    sources: list[tuple[str, str]] = []
+    for fn in d4:
+        if not re.search(r".d4$", fn):
+            raise ValueError(f"Input file {fn} does not have .d4 extension")
+        fn = Path(fn)
+        sample = re.sub(".per-base.d4", "", fn.name)
+        sources.append((str(fn), sample))
+
+    # Import data into the store
+    logger.info("Importing %i data sources", len(sources))
+    n_samples = len(sources)
+    try:
+        report = pbzarr.import_d4(
+            destination=str(path),
+            track=track,
+            sources=sources,
+            workers=workers,
+            progress=progress,
+            chunk_size=chunk_size,
+            column_dim="sample",
+            column_chunk_size=n_samples,
+        )
+    except pbzarr.PbzError as e:
+        logger.error("Error importing d4 files: %s", e)
+        raise
+    except Exception as e:
+        logger.error("Error importing d4 files: %s", e)
+        logger.error(report)
+        raise
+
+
+def preprocess(
+    path: Path | str,
+    track: str = "depth",
+    workers: int = 1,
+    progress: bool = True,
+    chunk_size: int = 1_000_000,
+    sampleinfo: Path | str | None = None,
+    missingness_threshold: int = 3,
+) -> None:
+    """Preprocess the pbzarr store for faster access.
+
+    Add track_sum and track_count tracks for all samplesets.
+    """
+    store = pbzarr.open(path)
+    n_samples = store[track].dims["sample"]
+    default_sample_set_membership = ["ALL"] * n_samples
+    sampleinfo_df = pd.DataFrame(
+        {
+            "sample": store[track].coords["sample"],
+            "sample_set": default_sample_set_membership,
+        }
+    )
+    user_sampleinfo_df = (
+        pd.read_table(
+            sampleinfo, header=None, sep=r"\s+", names=["sample", "sample_set"]
+        )
+        if sampleinfo is not None
+        else None
+    )
+    if user_sampleinfo_df is not None:
+        sampleinfo_df = pd.concat([sampleinfo_df, user_sampleinfo_df], axis=0)
+    groups = sampleinfo_df.groupby("sample_set")
+    ds_sum = _preprocess_track_sum(store, groups, track=track)
+    ds_sum.to_zarr(path, group=f"{track}_sum", mode="w")
+    ds_missing = _preprocess_track_sum(
+        store, groups, track=track, threshold=missingness_threshold
+    )
+    ds_missing.to_zarr(
+        path, group=f"{track}_missingness_{missingness_threshold}", mode="w"
+    )
