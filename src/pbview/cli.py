@@ -1,11 +1,12 @@
 import re
 from pathlib import Path
 
-import pandas as pd
 import pbzarr
+from dask.diagnostics import ProgressBar
 
 from pbview.datastore import DataStore
 from pbview.logging import app_logger as logger
+from pbview.preprocess.track import compute_track_missingness, compute_track_sum
 
 
 def summarize(
@@ -103,30 +104,21 @@ def preprocess(
 
     Add track_sum and track_count tracks for all samplesets.
     """
-    store = pbzarr.open(path)
-    n_samples = store[track].dims["sample"]
-    default_sample_set_membership = ["ALL"] * n_samples
-    sampleinfo_df = pd.DataFrame(
-        {
-            "sample": store[track].coords["sample"],
-            "sample_set": default_sample_set_membership,
-        }
+    ds = DataStore(path=path, sampleinfo=sampleinfo)
+    ds_sum = compute_track_sum(track=ds.tracks[track], base_coord=ds.base_coord)
+    logger.info("Writing track sum to pbzarr store at %s", path)
+    with ProgressBar():
+        ds_sum.to_zarr(path, group=f"{track}_sum", mode="w")
+
+    ds_miss = compute_track_missingness(
+        track=ds.tracks[track],
+        base_coord=ds.base_coord,
+        threshold=missingness_threshold,
     )
-    user_sampleinfo_df = (
-        pd.read_table(
-            sampleinfo, header=None, sep=r"\s+", names=["sample", "sample_set"]
+    logger.info("Writing track missingness to pbzarr store at %s", path)
+    with ProgressBar():
+        ds_miss.to_zarr(
+            path,
+            group=f"{track}_missingness_threshold={missingness_threshold}",
+            mode="w",
         )
-        if sampleinfo is not None
-        else None
-    )
-    if user_sampleinfo_df is not None:
-        sampleinfo_df = pd.concat([sampleinfo_df, user_sampleinfo_df], axis=0)
-    groups = sampleinfo_df.groupby("sample_set")
-    ds_sum = _preprocess_track_sum(store, groups, track=track)
-    ds_sum.to_zarr(path, group=f"{track}_sum", mode="w")
-    ds_missing = _preprocess_track_sum(
-        store, groups, track=track, threshold=missingness_threshold
-    )
-    ds_missing.to_zarr(
-        path, group=f"{track}_missingness_{missingness_threshold}", mode="w"
-    )

@@ -124,7 +124,10 @@ def chunk_size_option(default: int = 1000000) -> Callable[[FC], FC]:
     return click.option(
         "--chunk-size",
         default=default,
-        help="Chunk size for processing large files. Consider reducing if number of samples is large (n>500).",
+        help=(
+            "Chunk size for processing large files. Consider "
+            "reducing if number of samples is large (n>500)."
+        ),
     )
 
 

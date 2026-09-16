@@ -7,6 +7,7 @@ __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-01"
 
 import json
+import re
 from collections.abc import Iterable
 from functools import cached_property, lru_cache
 from pathlib import Path
@@ -26,6 +27,9 @@ from pbview import config
 from pbview.logging import app_logger as logger
 
 xr.set_options(display_expand_attrs=False)
+
+
+_THRESHOLD_RE = re.compile(r"^(?P<base>.+)_missingness_threshold=(?P<t>\d+)$")
 
 
 class NpEncoder(json.JSONEncoder):
@@ -191,6 +195,17 @@ class Coordinates:
             [config.DEFAULT_SAMPLE_SET] + user_sample_set_names
         )
         return new
+
+    def matching_sample_set(self) -> str | None:
+        """Return the name of the sample set that matches the current sample mask."""
+        for name in self.sample_set_names:
+            if name == "ALL":
+                members = self._samples_all
+            else:
+                members = self._samples_all[self._sample_set_membership == name]
+            if np.array_equal(np.sort(members), np.sort(self.samples)):
+                return name
+        return None
 
     # Factory methods
     def with_length_filter(
@@ -456,12 +471,30 @@ class Coordinates:
         )
 
 
+class PrecomputedTrack:
+    """A representation of a precomputed data track."""
+
+    def __init__(self, dt: xr.DataTree | None, track_name: str = "depth"):
+        if dt is None:
+            self.sum = None
+            self.missingness = {}
+            return
+
+        self.sum = dt.get(f"{track_name}_sum")
+        self.missingness = {}
+        for key in dt:
+            m = _THRESHOLD_RE.match(key)
+            if m and m.group("base") == track_name:
+                self.missingness[int(m.group("t"))] = dt[key]
+
+
 class Track:
     """A representation of a pbzarr data track.
 
     Args:
         track_name: name of track
         data: pbzarr data group
+        preprocess_data: preprocessing data set
 
     Returns:
         A Track object.
@@ -469,9 +502,15 @@ class Track:
 
     TARGET_BYTES = config.TARGET_BYTES
 
-    def __init__(self, track_name: str, data: xr.DataTree):
+    def __init__(
+        self,
+        track_name: str,
+        data: xr.DataTree,
+        preprocess_data: xr.DataTree | None = None,
+    ):
         self.name = track_name
         self._data = data
+        self._pre = PrecomputedTrack(preprocess_data, track_name=track_name)
 
     def __repr__(self) -> str:
         return f"<Track(name={self.name})>"
@@ -479,15 +518,19 @@ class Track:
     def __str__(self) -> str:
         return f"Track(name={self.name})"
 
-    def _select(self, base: xr.DataArray, coord: Coordinates) -> xr.DataArray:
-        """Apply a Coordinates selection to a given base array."""
-        res = base.sel(sample=coord.samples)
+    def _select_positions(self, base: xr.DataArray, coord: Coordinates) -> xr.DataArray:
+        """Apply a contig/position selection from coord."""
         if not coord.contig_mask_is_active:
-            return res
+            return base
         if coord.n_contigs == 0:
             return base.sel(position=[])
-        parts = [res.isel(position=slice(a, b)) for a, b in coord.contig_slices()]
+        parts = [base.isel(position=slice(a, b)) for a, b in coord.contig_slices()]
         return xr.concat(parts, dim="position")
+
+    def _select(self, base: xr.DataArray, coord: Coordinates) -> xr.DataArray:
+        """Apply a sample + position selection"""
+        res = base.sel(sample=coord.samples)
+        return self._select_positions(res, coord)
 
     def data(self, coord: Coordinates) -> xr.DataArray:
         """Default view (original chunking)."""
@@ -521,9 +564,18 @@ class Track:
         logger.info("Calculating histogram of coverage for '%s' track", self.name)
         logger.debug("Current selection: %s", coord)
         bins = np.asarray(bins)
+        name = coord.matching_sample_set()
+        if name is not None and self._pre.sum is not None:
+            sums = self._select_positions(self._pre.sum["values"], coord).sel(
+                sample_set=name
+            )
+
+        else:
+            # Raw path
+            arr = self._select(self._hist_view, coord)["values"]
+            sums = arr.sum("sample").astype(np.int32)
         max_bin = int(bins[-1])
-        values = self._select(self._hist_view, coord)["values"]
-        sums_clipped = da.minimum(values.astype(np.int64).sum("sample").data, max_bin)
+        sums_clipped = da.minimum(sums.data, max_bin)
         hist = da.bincount(sums_clipped, minlength=int(bins[-1]) + 1)
         with ProgressBar():
             return hist.compute(), bins
@@ -552,10 +604,24 @@ class Track:
         logger.info("Calculating missingness histogram for '%s' track", self.name)
         logger.debug("Current selection: %s", coord)
         bins = np.asarray(bins)
-        values = self._select(self._hist_view, coord)["values"]
-        counts = (values > threshold).astype(np.int64).sum("sample").data
+        name = coord.matching_sample_set()
+
+        if name is not None and self._pre.missingness.get(threshold) is not None:
+            counts = (
+                self._select_positions(
+                    self._pre.missingness[threshold]["values"], coord
+                )
+                .sel(sample_set=name)
+                .data
+            )
+        else:
+            # Raw path
+            arr = self._select(self._hist_view, coord)["values"]
+            counts = (arr > threshold).astype(np.int32).sum("sample").data
+        max_bin = int(bins[-1])
+        counts_clipped = da.minimum(counts, max_bin)
         with ProgressBar():
-            hist = da.bincount(counts, minlength=int(bins[-1])).compute()
+            hist = da.bincount(counts_clipped, minlength=int(bins[-1])).compute()
         return hist, bins
 
     def missingness_hist(
@@ -587,9 +653,6 @@ class Track:
     def size(self):
         pass
 
-    # FIXME: the size is the size of the filtered coordinates to
-    # indicate the "active genome": the variable name should reflect
-    # this
     def summary(self, coord: Coordinates, lower: int = 0, upper: float = np.inf):
         """Return a track summary of coordinate selection relative to
         base coordinates."""
@@ -621,11 +684,18 @@ class DataStore:
             logger.error("Error opening pbzarr store: %s", e)
             raise
         track = list(self.store.keys())[0]
-        sample_sets = (
-            pd.read_table(sampleinfo, header=None, sep=r"\s+", index_col=0)[1].values
-            if sampleinfo is not None
-            else None
-        )
+        sample_sets = None
+        if sampleinfo is not None:
+            sampleinfo_df = pd.read_table(
+                sampleinfo,
+                header=None,
+                sep=r"\s+",
+                index_col=0,
+                names=["sample", "sample_set"],
+            )
+            samples = self.store[track].coords["sample"].values
+            sample_sets = sampleinfo_df.loc[samples]["sample_set"].values
+
         self.base_coord = Coordinates.from_datatree(
             self.store[track], sample_sets=sample_sets
         )
@@ -633,6 +703,7 @@ class DataStore:
             name: Track(
                 track_name=name,
                 data=self.store[name],
+                preprocess_data=xr.open_datatree(path, engine="zarr", chunks={}),
             )
             for name in self.store.keys()
         }

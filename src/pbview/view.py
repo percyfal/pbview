@@ -152,7 +152,7 @@ def make_selection_state_class(
             default=max_coverage, bounds=(0, None)
         )
         params[f"missingness_{s}"] = param.Integer(
-            default=0, bounds=(0, base_coord.with_sample_sets([s]).n_samples_all)
+            default=0, bounds=(0, base_coord.with_sample_sets([s]).n_samples)
         )
 
     return type("SelectionState", (SelectionStateBase,), params)
@@ -259,7 +259,6 @@ class TrackView(Viewer, param.ParameterizedABC):
     def __init__(self, track: Track, **params):
         super().__init__(**params)
         self.track = track
-        # self.state = state
 
     @abstractmethod
     def __panel__(self) -> Any:
@@ -277,6 +276,14 @@ class _TrackPlotView(TrackView, param.ParameterizedABC):
     sample_set = param.String(
         default=config.DEFAULT_SAMPLE_SET, doc="Sample set to plot"
     )
+
+    @property
+    def coord(self):
+        return self.state.coord.with_sample_sets(sample_sets=[self.sample_set])
+
+    @property
+    def bins(self):
+        return np.arange(self.maxbins + 2)
 
     @abstractmethod
     def hist(self, *_):
@@ -297,14 +304,6 @@ class TrackCoverageView(_TrackPlotView):
             self.state.param[f"lower_coverage_{self.sample_set}"],
             self.state.param[f"upper_coverage_{self.sample_set}"],
         )
-
-    @property
-    def coord(self):
-        return self.state.coord.with_sample_sets(sample_sets=[self.sample_set])
-
-    @property
-    def bins(self):
-        return np.arange(self.maxbins + 2)
 
     def _data(self):
         counts, bins = self.track.coverage_hist(
@@ -360,27 +359,14 @@ class TrackMissingnessView(_TrackPlotView):
         self.maxbins = self.state.coord.n_samples
         self.compute_accessible = pn.bind(
             self._compute_accessible,
-            self.state.param.missingness,
+            self.state.param[f"missingness_{self.sample_set}"],
         )
 
     def _data(self):
         counts, bins = self.track.missingness_hist(
-            coord=self.state.coord, threshold=self.missingness_threshold
+            coord=self.coord, threshold=self.missingness_threshold
         )
-        sample_sets = np.repeat(config.DEFAULT_SAMPLE_SET, len(counts))
-        df = pd.DataFrame({"bins": bins, "counts": counts, "sampleset": sample_sets})
-        for sample_set in self.state.coord.sample_set_names:
-            _counts, _bins = self.track.missingness_hist(
-                coord=self.state.coord.with_sample_sets([sample_set]),
-                threshold=self.missingness_threshold,
-            )
-            # _bins = _bins[:-1]
-            _sample_set_membership = np.repeat(sample_set, len(_counts))
-            _df = pd.DataFrame(
-                {"bins": _bins, "counts": _counts, "sampleset": _sample_set_membership}
-            )
-            df = pd.concat([df, _df], ignore_index=True)
-        self._df = df
+        self._df = pd.DataFrame({"bins": bins, "counts": counts})
 
     @property
     def bins(self):
@@ -388,25 +374,24 @@ class TrackMissingnessView(_TrackPlotView):
 
     def hist(self, *_):
         self._data()
-        return self._df.hvplot.scatter(
-            x="bins", y="counts", by="sampleset", shared_axes=False
-        )
+        return self._df.hvplot.scatter(x="bins", y="counts", shared_axes=False)
 
     def __panel__(self):
         return pn.Column(
             "# Missingness",
             pn.Row(
                 self.param.missingness_threshold,
-                self.state.param.missingness,
+                self.state.param[f"missingness_{self.sample_set}"],
             ),
             self.compute_accessible,
             self.hist,
         )
 
+    @param.depends("missingness_threshold")
     def _compute_accessible(self, missingness):
         self._data()
         counts = self._df["counts"]
-        return np.sum(counts[missingness:])
+        return np.sum(counts[: missingness + 1])
 
 
 class DataStoreView(Viewer):
@@ -429,9 +414,12 @@ class DataStoreView(Viewer):
             )
             for s in self.state.coord.sample_set_names
         }
-        self.track_missingness_view = TrackMissingnessView(
-            track=self.state.track(), state=self.state
-        )
+        self.track_missingness_view = {
+            s: TrackMissingnessView(
+                track=self.state.track(), state=self.state, sample_set=s
+            )
+            for s in self.state.coord.sample_set_names
+        }
 
         self.main_pane = pn.bind(
             self._render_main,
@@ -454,13 +442,22 @@ class DataStoreView(Viewer):
             ),
         )
 
-    # FIXME: if the trackplotview is too expensive to recompute on
-    # every coordinate selection one could bind to a separate function
-    # where an active user input is required to refresh.
+    def _render_missingness(self):
+        return pn.Column(
+            "# Missingness",
+            pn.GridBox(
+                *[
+                    self.track_missingness_view[s]
+                    for s in self.state.coord.sample_set_names
+                ],
+                ncols=2,
+            ),
+        )
+
     def _render_main(self, *_):
         return pn.Column(
             self._render_coverage(),
-            self.track_missingness_view,
+            self._render_missingness(),
         )
 
     # FIXME: need a refresh button to reset to defaults. Possibly add

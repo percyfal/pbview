@@ -6,7 +6,7 @@ import panel as pn
 import pytest
 from pytest import fixture
 
-from pbview import datastore, cli
+from pbview import cli
 
 dirname = Path(os.path.abspath(os.path.dirname(__file__)))
 
