@@ -94,13 +94,17 @@ pbview = { path = ".", editable = true }
 [tool.pixi.tasks.init_store]
 cmd = "test -d 'store' && echo 'store exists' || pbview import store tests/data/s*.per-base.d4"
 
+[tool.pixi.tasks.preprocess]
+cmd = "test -d 'store/depth_sum' && 'preprocessing done' || pbview preprocess store --sampleinfo tests/data/sampleinfo.tsv"
+depends-on = ["init_store"]
+
 [tool.pixi.tasks.dev]
 args = [
   { "arg" = "port", default = "5507" },
   { "arg" = "input", default = "store" },
   { "arg" = "options", default = "--sampleinfo tests/data/sampleinfo.tsv" },
 ]
-depends-on = ["init_store"]
+depends-on = ["preprocess"]
 cmd = "panel serve src/pbview --dev --show --args serve --port {{port}} {{ options }} {{ input }} "
 
 [tool.pixi.tasks.sandbox]
