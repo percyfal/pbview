@@ -10,6 +10,7 @@ from abc import abstractmethod
 from functools import lru_cache
 from typing import Any
 
+import holoviews as hv
 import hvplot.pandas  # noqa
 import numpy as np
 import pandas as pd
@@ -286,7 +287,7 @@ class _TrackPlotView(TrackView, param.ParameterizedABC):
         return np.arange(self.maxbins + 2)
 
     @abstractmethod
-    def hist(self, *_):
+    def _hist(self, *_):
         pass
 
 
@@ -304,6 +305,11 @@ class TrackCoverageView(_TrackPlotView):
             self.state.param[f"lower_coverage_{self.sample_set}"],
             self.state.param[f"upper_coverage_{self.sample_set}"],
         )
+        self.hist = pn.bind(
+            self._hist,
+            self.state.param[f"lower_coverage_{self.sample_set}"],
+            self.state.param[f"upper_coverage_{self.sample_set}"],
+        )
 
     def _data(self):
         counts, bins = self.track.coverage_hist(
@@ -313,16 +319,11 @@ class TrackCoverageView(_TrackPlotView):
         self._df = pd.DataFrame({"bins": bins, "counts": counts})
 
     @param.depends("maxbins", "plot_type", "state.coord")
-    def hist(self, *_):
+    def _hist(self, lower, upper, *_):
         self._data()
-        # func = getattr(self.data.hvplot, "area")
-        # kw = {
-        #     "fill_alpha": 0.1,
-        #     "legend": True,
-        #     "by": "sampleset", # feature
-        # }
-        # dims = dict(kdims=["bins"], vdims=["counts"])
-        return self._df.hvplot.scatter(x="bins", y="counts", shared_axes=False)
+        scatter = self._df.hvplot.scatter(x="bins", y="counts", shared_axes=False)
+        band = hv.VSpan(lower, upper).opts(color="grey", alpha=0.2)
+        return (scatter * band).opts(shared_axes=False)
 
     @param.depends("maxbins")
     def _compute_accessible(self, lower_coverage, upper_coverage):
@@ -361,6 +362,10 @@ class TrackMissingnessView(_TrackPlotView):
             self._compute_accessible,
             self.state.param[f"missingness_{self.sample_set}"],
         )
+        self.hist = pn.bind(
+            self._hist,
+            self.state.param[f"missingness_{self.sample_set}"],
+        )
 
     def _data(self):
         counts, bins = self.track.missingness_hist(
@@ -372,9 +377,11 @@ class TrackMissingnessView(_TrackPlotView):
     def bins(self):
         return np.arange(self.maxbins + 2)
 
-    def hist(self, *_):
+    def _hist(self, missingness):
         self._data()
-        return self._df.hvplot.scatter(x="bins", y="counts", shared_axes=False)
+        scatter = self._df.hvplot.scatter(x="bins", y="counts", shared_axes=False)
+        band = hv.VSpan(0, missingness).opts(color="grey", alpha=0.2)
+        return (scatter * band).opts(shared_axes=False)
 
     def __panel__(self):
         return pn.Column(
