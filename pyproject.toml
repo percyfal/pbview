@@ -105,7 +105,7 @@ args = [
   { "arg" = "options", default = "--sampleinfo tests/data/sampleinfo.tsv" },
 ]
 depends-on = ["preprocess"]
-cmd = "panel serve src/pbview --dev --show --args serve --port {{port}} {{ options }} {{ input }} "
+cmd = "panel serve --port {{port}} src/pbview --dev --show --args serve {{ options }} {{ input }} "
 
 [tool.pixi.tasks.sandbox]
 args = [{ "arg" = "port", default = "5508" }]

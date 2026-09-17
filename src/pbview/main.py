@@ -14,7 +14,7 @@ information.
 """
 
 from pbview import app  # noqa
-from pbview import datastore  # noqa
+from pbview.model import datastore  # noqa
 
 import sys
 from collections import deque

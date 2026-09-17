@@ -4,8 +4,8 @@ from pathlib import Path
 import pbzarr
 from dask.diagnostics import ProgressBar
 
-from pbview.datastore import DataStore
 from pbview.logging import app_logger as logger
+from pbview.model.datastore import DataStore
 from pbview.preprocess.track import compute_track_missingness, compute_track_sum
 
 

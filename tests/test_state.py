@@ -1,8 +1,22 @@
 import numpy as np
 import pytest
 
-from pbview.datastore import DataStore
-from pbview.view import make_selection_state_class
+from pbview.model.datastore import DataStore
+from pbview.model.selection import make_selection_state_class
+
+
+@pytest.fixture()
+def defaults():
+    return {
+        "lower_coverage_ALL": 10,
+        "upper_coverage_ALL": 100,
+        "lower_coverage_pop1": 3,
+        "upper_coverage_pop1": 40,
+        "lower_coverage_pop2": 5,
+        "upper_coverage_pop2": 50,
+        "lower_coverage_pop3": 7,
+        "upper_coverage_pop3": 60,
+    }
 
 
 @pytest.fixture()
@@ -11,9 +25,9 @@ def ds(store, sampleinfo):
 
 
 @pytest.fixture()
-def state(ds):
-    SelectionState = make_selection_state_class(ds.base_coord)
-    return SelectionState(datastore=ds)
+def state(ds, defaults):
+    cls = make_selection_state_class(ds.base_coord, defaults=defaults)
+    return cls(datastore=ds)
 
 
 @pytest.mark.parametrize(

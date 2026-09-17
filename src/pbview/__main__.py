@@ -7,14 +7,9 @@ import pandas as pd  # noqa
 import panel as pn  # noqa
 from click.decorators import FC
 
-from pbview import (
-    # cache,  # noqa
-    cli as pbview_cli,  # noqa
-    datastore,  # noqa
-)
+from pbview import cli as pbview_cli
+from pbview.model import datastore  # noqa
 
-# from pbview.d4utils import commands as d4utils_cmd  # noqa
-# from pbview.model import d4  # noqa
 from pbview.logging import log_level  # noqa
 from pbview.logging import app_logger as logger  # noqa
 
@@ -33,15 +28,6 @@ def log_filter_option(expose_value: bool = False) -> Callable[[FC], FC]:
         expose_value=expose_value,
         help="Do not filter the output log (advanced debugging only)",
     )
-
-
-# def cachedir_option() -> Callable[[FC], FC]:
-#     return click.option(
-#         "--cachedir",
-#         default=cache.CACHEDIR,
-#         expose_value=True,
-#         help="Set the cache dir",
-#     )
 
 
 def path_argument(
@@ -266,18 +252,6 @@ def summarize(
     logger.info(data)
 
 
-# FIXME: This is a placeholder for the preprocess command. It should
-# be implemented to handle preprocessing of expensive data before
-# serving. The user should be able to provide
-#   - a grid of maxbin values for the histograms per sample-set;
-#     defaults to mean + 3-5stddev rounded to next 100? or base on
-#     magnitude of the mean?
-#   - a grid of threshold values for the histograms per sample-set; default 0-5?
-#   - sampleinfo such that histograms are pre-computed for all sampleset groupings
-#   - contig length filters to start with sensible contigs (exclude low-complexity)
-#
-# UPDATE: pre-calculate sum / count vectors for all sample sets and
-# store in Zarr store. Will make histogram generation much faster.
 @cli.command()
 @path_argument(exists=True, dir_okay=True, nargs=1)
 @workers_option(default=1)

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from pbview.datastore import Coordinates
+from pbview.model.coordinates import Coordinates
 
 
 @dataclass(frozen=True)

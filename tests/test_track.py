@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from pbview.datastore import DataStore, Track
+from pbview.model.datastore import DataStore
+from pbview.model.histogram import compute_threshold_defaults
 
 
 @pytest.fixture()
@@ -10,8 +11,8 @@ def ds(store, sampleinfo):
 
 
 @pytest.fixture()
-def track(ds):
-    return Track("track", data=ds.store["depth"])
+def track(ds, store):
+    return ds.tracks["depth"]
 
 
 @pytest.fixture()
@@ -20,7 +21,7 @@ def coord(ds):
 
 
 def test_data_base_coord(track, coord):
-    assert track.name == "track"
+    assert track.name == "depth"
     assert track.data(coord).dims["position"] == 2_700_000
     assert track.data(coord).dims["sample"] == 7
     assert track.data(coord).dims["contig"] == 3
@@ -121,3 +122,7 @@ def test_optimal_chunking(track):
     assert cs["sample"] == -1
     cs = track._optimal_chunks("position")
     assert cs["position"] == -1
+
+
+def test_coverage_hist_stats(ds):
+    print(compute_threshold_defaults(ds, "depth"))

@@ -11,8 +11,9 @@ __date__ = "2026-09-15"
 import numpy as np
 import xarray as xr
 
-from pbview.datastore import Coordinates, Track
 from pbview.logging import app_logger as logger
+from pbview.model.coordinates import Coordinates
+from pbview.model.track import Track
 
 
 def compute_track_sum(track: Track, base_coord: Coordinates) -> xr.Dataset:

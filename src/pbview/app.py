@@ -14,9 +14,9 @@ import param
 from panel.viewable import Viewer
 
 from pbview import config
-from pbview.datastore import DataStore
 from pbview.logging import app_logger as logger
-from pbview.view import DataStoreView
+from pbview.model.datastore import DataStore
+from pbview.view.datastore import DataStoreView
 
 pn.extension("vega", throttled=True)
 pn.extension(sizing_mode="stretch_width")

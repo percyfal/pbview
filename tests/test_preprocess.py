@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from pbview.datastore import DataStore, Track
+from pbview.model.datastore import DataStore
+from pbview.model.track import Track
 from pbview.preprocess.track import compute_track_missingness, compute_track_sum
 
 

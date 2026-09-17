@@ -1,0 +1,340 @@
+"""
+Classes for viewing Track
+"""
+
+from __future__ import annotations
+
+__author__ = "Per Unneberg"
+__contact__ = "per.unneberg@scilifelab.se"
+__date__ = "2026-09-01"
+
+from abc import abstractmethod
+from typing import Any
+
+import holoviews as hv
+import hvplot.pandas  # noqa
+import numpy as np
+import pandas as pd
+import panel as pn
+import param
+from panel.viewable import Viewer
+
+from pbview import config
+from pbview.model.histogram import hist_stats
+from pbview.model.selection import SelectionStateBase
+from pbview.model.track import Track
+
+pn.extension("tabulator")
+
+
+class TrackIndicatorTable(Viewer):
+    state = param.ClassSelector(class_=SelectionStateBase, is_instance=True)
+    hist_rxs = param.Dict()  # {sample_set: ((counts, bins))}
+
+    def __init__(self, **params):
+        super().__init__(**params)
+        deps = list(self.hist_rxs.values()) + [self.state.param.coord]
+        for s in self.hist_rxs:
+            deps.append(self.state.param[f"lower_coverage_{s}"])
+            deps.append(self.state.param[f"upper_coverage_{s}"])
+        self._df_rx = pn.bind(self._build_df, *deps)
+
+    def _build_df(self, *args):
+        n = len(self.hist_rxs)
+        hists = args[:n]
+        coord = args[n]
+        thresh = args[n + 1 :]
+
+        rows = []
+        for i, s in enumerate(self.hist_rxs):
+            counts, bins = hists[i]
+            lo, up = thresh[2 * i], thresh[2 * i + 1]
+            stats = hist_stats(counts, bins)
+            mask = (bins >= lo) & (bins <= up)
+            accessible = int(counts[mask].sum())
+            rows.append(
+                {
+                    "sample_set": s,
+                    "lower": lo,
+                    "upper": up,
+                    "accessible_bp": accessible,
+                    "frac_active_genome": accessible / coord.genome_size,
+                    "frac_full_genome": accessible / coord.genome_size_all,
+                    "median": stats["median"],
+                    "mean": round(stats["mean"], 1),
+                    "60%": round(stats["mean"] * 0.6, 1),
+                    "70%": round(stats["mean"] * 0.6, 1),
+                    "80%": round(stats["mean"] * 0.6, 1),
+                    "90%": round(stats["mean"] * 0.6, 1),
+                    "med + 1std": round(stats["median"] + stats["std"]),
+                    "med + 2std": round(stats["median"] + 2 * stats["std"]),
+                    "std": round(stats["std"], 1),
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def __panel__(self):
+        return pn.widgets.Tabulator(
+            self._df_rx,
+            disabled=True,
+            layout="fit_data_stretch",
+            sizing_mode="stretch_width",
+        )
+
+
+class TrackIndicatorView(Viewer):
+    state = param.ClassSelector(class_=SelectionStateBase, is_instance=True)
+    sample_set = param.String()
+
+    def __init__(self, hist_rx, **params):
+        super().__init__(**params)
+        self._hist_rx = hist_rx
+        lo = self.state.param[f"lower_coverage_{self.sample_set}"]
+        hi = self.state.param[f"upper_coverage_{self.sample_set}"]
+        coord = self.state.param.coord
+
+        self._stats = pn.bind(self._render_stats, self._hist_rx)
+        self._accessible = pn.bind(
+            self._render_accessible, self._hist_rx, lo, hi, coord
+        )
+
+    def _render_stats(self, hist_data):
+        counts, bins = hist_data
+        s = hist_stats(counts, bins)
+        mean = s["mean"]
+        med = s["median"]
+        std = s["std"]
+        values = [
+            0.6 * mean,
+            0.7 * mean,
+            0.8 * mean,
+            0.9 * mean,
+            med + std,
+            med + 2 * std,
+        ]
+        return pn.Row(
+            pn.indicators.Number(name="Median", value=s["median"], format="{value:,}"),
+            pn.indicators.Number(name="Mean", value=s["mean"], format="{value:,.1f}"),
+            pn.indicators.Number(
+                name="60% mean", value=values[0], format="{value:,.1f}"
+            ),
+            pn.indicators.Number(
+                name="70% mean", value=values[1], format="{value:,.1f}"
+            ),
+            pn.indicators.Number(
+                name="80% mean", value=values[2], format="{value:,.1f}"
+            ),
+            pn.indicators.Number(
+                name="90% mean", value=values[3], format="{value:,.1f}"
+            ),
+            pn.indicators.Number(
+                name="median + 1std", value=values[4], format="{value:,.1f}"
+            ),
+            pn.indicators.Number(
+                name="median + 2std", value=values[5], format="{value:,.1f}"
+            ),
+        )
+
+    def _render_accessible(self, hist_data, lower, upper, coord):
+        counts, bins = hist_data
+        mask = (bins >= lower) & (bins <= upper)
+        accessible_bp = int(counts[mask].sum())
+        return pn.Row(
+            pn.indicators.Number(
+                name="Accessible", value=accessible_bp, format="{value:,}"
+            ),
+            pn.indicators.Number(
+                name="  of active",
+                value=accessible_bp / coord.genome_size,
+                format="{value:,.1%}",
+            ),
+            pn.indicators.Number(
+                name="  of total",
+                value=accessible_bp / coord.genome_size_all,
+                format="{value:,.1%}",
+            ),
+            pn.indicators.Number(
+                name="active / total",
+                value=coord.genome_size / coord.genome_size_all,
+                format="{value:,.1%}",
+            ),
+        )
+
+    def __panel__(self):
+        return pn.Column(self._stats, self._accessible)
+
+
+class TrackView(Viewer, param.ParameterizedABC):
+    """Base abstract class for track views"""
+
+    state = param.ClassSelector(class_=SelectionStateBase)
+
+    def __init__(self, track: Track, **params):
+        super().__init__(**params)
+        self.track = track
+
+    @abstractmethod
+    def __panel__(self) -> Any:
+        pass
+
+
+class TrackSummaryView(TrackView):
+    def __panel__(self):
+        return pn.Column("# Track summary", self.track.summary(self.state.coord))
+
+
+class _TrackPlotView(TrackView, param.ParameterizedABC):
+    """Generic TrackPlotView class"""
+
+    maxbins = param.Integer(default=1000, bounds=(0, None), doc="Maximum bin size")
+    sample_set = param.String(
+        default=config.DEFAULT_SAMPLE_SET, doc="Sample set to plot"
+    )
+
+    @property
+    def coord(self):
+        return self.state.coord.with_sample_sets(sample_sets=[self.sample_set])
+
+
+class TrackCoverageView(_TrackPlotView):
+    def __init__(self, hist_rx, **params):
+        super().__init__(**params)
+        self._hist_rx = hist_rx
+        lo = self.state.param[f"lower_coverage_{self.sample_set}"]
+        hi = self.state.param[f"upper_coverage_{self.sample_set}"]
+
+        self.plot = pn.bind(self._plot, self._hist_rx, lo, hi)
+
+    def _plot(self, hist_data, lower, upper):
+        counts, bins = hist_data
+        df = pd.DataFrame({"coverage": bins, "count": counts})
+        scatter = df.hvplot.scatter(x="coverage", y="count").opts(shared_axes=False)
+        band = hv.VSpan(lower, upper).opts(color="grey", alpha=0.2)
+        return scatter * band
+
+    def __panel__(self):
+        return pn.Column(
+            pn.Row(
+                self.param.maxbins,
+                self.state.param[f"lower_coverage_{self.sample_set}"],
+                self.state.param[f"upper_coverage_{self.sample_set}"],
+            ),
+            self.plot,
+        )
+
+
+class TrackMissingnessView(_TrackPlotView):
+    missingness_threshold = param.Integer(
+        default=3,
+        bounds=(0, None),
+        doc="Minimum coverage to consider an individual sample site as accessible",
+    )
+
+    def __init__(self, hist_rx, **params):
+        super().__init__(**params)
+        self._hist_rx = hist_rx
+        missingness = self.state.param[f"missingness_{self.sample_set}"]
+        self.maxbins = self.state.coord.n_samples
+
+        self.plot = pn.bind(self._plot, self._hist_rx, missingness)
+
+    def _plot(self, hist_data, missingness):
+        counts, bins = hist_data
+        df = pd.DataFrame({"missingness": bins, "count": counts})
+        scatter = df.hvplot.scatter(x="missingness", y="count").opts(shared_axes=False)
+        band = hv.VSpan(0, missingness).opts(color="grey", alpha=0.2)
+        return scatter * band
+
+    def __panel__(self):
+        return self.plot
+        # return pn.Column(self.hist, self._indicators)
+
+
+class TrackCoveragePage(Viewer):
+    track = param.ClassSelector(class_=Track, is_instance=True)
+    state = param.ClassSelector(class_=SelectionStateBase, is_instance=True)
+    active_sets = param.ListSelector(default=[], objects=[])  # populated in __init__
+    maxbins = param.Integer(default=100)
+    maxbins_default = param.Dict(default={})
+
+    def __init__(self, **params):
+        super().__init__(**params)
+        self.param.active_sets.objects = self.state.coord.sample_set_names
+        self.active_sets = list(self.state.coord.sample_set_names)
+
+        self._hist_rx = {
+            s: pn.rx(self._compute_hist)(
+                self.maxbins_default[s], self.state.param.coord, s
+            )
+            for s in self.state.coord.sample_set_names
+        }
+
+        self._plots = {
+            s: TrackCoverageView(
+                track=self.track,
+                state=self.state,
+                sample_set=s,
+                hist_rx=self._hist_rx[s],
+                maxbins=self.maxbins,
+            )
+            for s in self.state.coord.sample_set_names
+        }
+
+        self._table = TrackIndicatorTable(
+            state=self.state,
+            hist_rxs=self._hist_rx,  # dict of rx
+        )
+
+    def _compute_hist(self, maxbins, coord, sample_set):
+        bins = np.arange(maxbins + 1)
+        return self.track.coverage_hist(
+            bins=bins, coord=coord.with_sample_sets([sample_set])
+        )
+
+    def __panel__(self):
+        # active-set widget drives the plot grid; table shows all sets always
+        chooser = pn.widgets.CheckBoxGroup.from_param(
+            self.param.active_sets, inline=True
+        )
+        plot_grid = pn.bind(self._render_plots, self.param.active_sets)
+        return pn.Column(chooser, self._table, plot_grid)
+
+    def _render_plots(self, active):
+        return pn.GridBox(*[self._plots[s] for s in active], ncols=2)
+
+
+class TrackMissingnessPage(Viewer):
+    track = param.ClassSelector(class_=Track, is_instance=True)
+    state = param.ClassSelector(class_=SelectionStateBase, is_instance=True)
+    active_sets = param.ListSelector(default=[], objects=[])  # populated in __init__
+
+    def __init__(self, **params):
+        super().__init__(**params)
+        self.param.active_sets.objects = self.state.coord.sample_set_names
+        self.active_sets = list(self.state.coord.sample_set_names)
+
+        self._hist_rx = {
+            s: pn.rx(self._compute_hist)(self.state.param.coord, s)
+            for s in self.state.coord.sample_set_names
+        }
+
+        self._plots = {
+            s: TrackMissingnessView(
+                track=self.track,
+                state=self.state,
+                sample_set=s,
+                hist_rx=self._hist_rx[s],
+            )
+            for s in self.state.coord.sample_set_names
+        }
+
+        self._table = TrackIndicatorTable(
+            state=self.state,
+            hist_rxs=self._hist_rx,  # dict of rx
+        )
+
+    def _compute_hist(self, maxbins, coord, sample_set):
+        bins = np.arange(maxbins + 1)
+        return self.track.missingness_hist(
+            bins=bins, coord=coord.with_sample_sets([sample_set])
+        )

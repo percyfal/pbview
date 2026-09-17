@@ -46,10 +46,11 @@ def d4all(d4file) -> list[Path]:
 
 
 @pytest.fixture(scope="session")
-def store(tmpdir_factory, d4all):
+def store(tmpdir_factory, d4all, sampleinfo):
     p = Path(tmpdir_factory.mktemp("store")) / "datastore.zarr"
     d4all = [str(p) for p in d4all]
     cli.import_d4(str(p), d4all)
+    cli.preprocess(p, sampleinfo=sampleinfo)
     return p
 
 
