@@ -31,10 +31,12 @@ class App(Viewer):
         self.title = str(self.datastoreview.title)
 
     def view(self):
+        dsv = self.datastoreview
         self._template = pn.template.FastListTemplate(
-            title=f"pbview dataset: {self.title}",
-            sidebar=[self.datastoreview.sidebar],
-            main=self.datastoreview,
+            title=dsv.title,
+            header=[dsv.chooser()],
+            sidebar=[dsv.sidebar()],
+            main=[dsv.main],
             sidebar_width=config.SIDEBAR_WIDTH,
         )
         return self._template

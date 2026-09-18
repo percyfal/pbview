@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import dask.array as da
 import numpy as np
+import panel as pn
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -23,6 +24,7 @@ from dask.diagnostics import ProgressBar
 
 from pbview import config
 from pbview.logging import app_logger as logger
+from pbview.model._identity import datatree_id
 
 if TYPE_CHECKING:
     from pbview.model.coordinates import Coordinates
@@ -35,6 +37,8 @@ class PrecomputedTrack:
     """A representation of a precomputed data track."""
 
     def __init__(self, dt: xr.DataTree | None, track_name: str = "depth"):
+        self._local_cache = {}
+        self._id = datatree_id(dt, schema_version=config.SCHEMA_VERSION)
         if dt is None:
             self.sum = None
             self.missingness = {}
@@ -50,14 +54,16 @@ class PrecomputedTrack:
         # Calculate full histogram on setup
         self._sum_hist_cache: dict[str, np.ndarray] = {}
 
+    @pn.cache
+    def _sum_hist_cached(self, dataset_id: str, sample_set: str) -> np.ndarray:
+        sums = self.sum["values"].sel(sample_set=sample_set).data
+        approx_max = int(sums.max().compute())
+        return da.bincount(sums, minlength=approx_max + 1).compute()
+
     def sum_hist(self, sample_set: str) -> np.ndarray:
-        """Caculate full histogram of per-position sums for sample set"""
-        if sample_set not in self._sum_hist_cache:
-            sums = self.sum["values"].sel(sample_set=sample_set).data
-            approx_max = int(sums.max().compute())
-            hist = da.bincount(sums, minlength=approx_max + 1).compute()
-            self._sum_hist_cache[sample_set] = hist
-        return self._sum_hist_cache[sample_set]
+        if sample_set not in self._local_cache:
+            self._local_cache[sample_set] = self._sum_hist_cached(self._id, sample_set)
+        return self._local_cache[sample_set]
 
 
 class Track:
@@ -197,11 +203,11 @@ class Track:
         else:
             # Raw path
             arr = self._select(self._hist_view, coord)["values"]
-            counts = (arr > threshold).astype(np.int32).sum("sample").data
+            counts = (arr <= threshold).astype(np.int32).sum("sample").data
         max_bin = int(bins[-1])
         counts_clipped = da.minimum(counts, max_bin)
         with ProgressBar():
-            hist = da.bincount(counts_clipped, minlength=int(bins[-1])).compute()
+            hist = da.bincount(counts_clipped, minlength=max_bin).compute()
         return hist, bins
 
     def missingness_hist(

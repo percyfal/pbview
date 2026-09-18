@@ -27,17 +27,39 @@ from pbview.model.track import Track
 pn.extension("tabulator")
 
 
-class TrackIndicatorTable(Viewer):
+class TrackIndicatorTableBase(Viewer):
     state = param.ClassSelector(class_=SelectionStateBase, is_instance=True)
     hist_rxs = param.Dict()  # {sample_set: ((counts, bins))}
 
     def __init__(self, **params):
         super().__init__(**params)
-        deps = list(self.hist_rxs.values()) + [self.state.param.coord]
-        for s in self.hist_rxs:
-            deps.append(self.state.param[f"lower_coverage_{s}"])
-            deps.append(self.state.param[f"upper_coverage_{s}"])
+        deps = (
+            list(self.hist_rxs.values()) + [self.state.param.coord] + self._extra_deps
+        )
         self._df_rx = pn.bind(self._build_df, *deps)
+
+    @property
+    def _extra_deps(self, **params):
+        retval = []
+        return retval
+
+    def __panel__(self):
+        return pn.widgets.Tabulator(
+            self._df_rx,
+            disabled=True,
+            layout="fit_data_stretch",
+            sizing_mode="stretch_width",
+        )
+
+
+class TrackIndicatorCoverageTable(TrackIndicatorTableBase):
+    @property
+    def _extra_deps(self, **params):
+        retval = []
+        for s in self.hist_rxs:
+            retval.append(self.state.param[f"lower_coverage_{s}"])
+            retval.append(self.state.param[f"upper_coverage_{s}"])
+        return retval
 
     def _build_df(self, *args):
         n = len(self.hist_rxs)
@@ -73,13 +95,37 @@ class TrackIndicatorTable(Viewer):
             )
         return pd.DataFrame(rows)
 
-    def __panel__(self):
-        return pn.widgets.Tabulator(
-            self._df_rx,
-            disabled=True,
-            layout="fit_data_stretch",
-            sizing_mode="stretch_width",
-        )
+
+class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
+    @property
+    def _extra_deps(self, **params):
+        retval = []
+        for s in self.hist_rxs:
+            retval.append(self.state.param[f"missingness_{s}"])
+        return retval
+
+    def _build_df(self, *args):
+        n = len(self.hist_rxs)
+        hists = args[:n]
+        coord = args[n]
+        miss = args[n + 1 :]
+
+        rows = []
+        for i, s in enumerate(self.hist_rxs):
+            counts, bins = hists[i]
+            missingness = miss[i]
+            mask = bins <= missingness
+            accessible = int(counts[mask].sum())
+            rows.append(
+                {
+                    "sample_set": s,
+                    "missingness": missingness,
+                    "accessible_bp": accessible,
+                    "frac_active_genome": accessible / coord.genome_size,
+                    "frac_full_genome": accessible / coord.genome_size_all,
+                }
+            )
+        return pd.DataFrame(rows)
 
 
 class TrackIndicatorView(Viewer):
@@ -210,7 +256,7 @@ class TrackCoverageView(_TrackPlotView):
         df = pd.DataFrame({"coverage": bins, "count": counts})
         scatter = df.hvplot.scatter(x="coverage", y="count").opts(shared_axes=False)
         band = hv.VSpan(lower, upper).opts(color="grey", alpha=0.2)
-        return scatter * band
+        return (scatter * band).opts(shared_axes=False)
 
     def __panel__(self):
         return pn.Column(
@@ -224,12 +270,6 @@ class TrackCoverageView(_TrackPlotView):
 
 
 class TrackMissingnessView(_TrackPlotView):
-    missingness_threshold = param.Integer(
-        default=3,
-        bounds=(0, None),
-        doc="Minimum coverage to consider an individual sample site as accessible",
-    )
-
     def __init__(self, hist_rx, **params):
         super().__init__(**params)
         self._hist_rx = hist_rx
@@ -243,14 +283,21 @@ class TrackMissingnessView(_TrackPlotView):
         df = pd.DataFrame({"missingness": bins, "count": counts})
         scatter = df.hvplot.scatter(x="missingness", y="count").opts(shared_axes=False)
         band = hv.VSpan(0, missingness).opts(color="grey", alpha=0.2)
-        return scatter * band
+        return (scatter * band).opts(shared_axes=False)
 
     def __panel__(self):
-        return self.plot
-        # return pn.Column(self.hist, self._indicators)
+        return pn.Column(
+            pn.Row(self.state.param[f"missingness_{self.sample_set}"]),
+            self.plot,
+        )
 
 
 class TrackCoveragePage(Viewer):
+    """Track coverage summary page.
+
+    Container and viewer for multiple TrackCoverageView instances.
+    """
+
     track = param.ClassSelector(class_=Track, is_instance=True)
     state = param.ClassSelector(class_=SelectionStateBase, is_instance=True)
     active_sets = param.ListSelector(default=[], objects=[])  # populated in __init__
@@ -280,7 +327,7 @@ class TrackCoveragePage(Viewer):
             for s in self.state.coord.sample_set_names
         }
 
-        self._table = TrackIndicatorTable(
+        self._table = TrackIndicatorCoverageTable(
             state=self.state,
             hist_rxs=self._hist_rx,  # dict of rx
         )
@@ -302,8 +349,17 @@ class TrackCoveragePage(Viewer):
     def _render_plots(self, active):
         return pn.GridBox(*[self._plots[s] for s in active], ncols=2)
 
+    @property
+    def table(self):
+        return self._table
+
 
 class TrackMissingnessPage(Viewer):
+    missingness_threshold = param.Integer(
+        default=3,
+        bounds=(0, None),
+        doc="Minimum coverage to consider an individual sample site as accessible",
+    )
     track = param.ClassSelector(class_=Track, is_instance=True)
     state = param.ClassSelector(class_=SelectionStateBase, is_instance=True)
     active_sets = param.ListSelector(default=[], objects=[])  # populated in __init__
@@ -312,9 +368,12 @@ class TrackMissingnessPage(Viewer):
         super().__init__(**params)
         self.param.active_sets.objects = self.state.coord.sample_set_names
         self.active_sets = list(self.state.coord.sample_set_names)
+        self.maxbins = self.state.coord.n_samples
 
         self._hist_rx = {
-            s: pn.rx(self._compute_hist)(self.state.param.coord, s)
+            s: pn.rx(self._compute_hist)(
+                self.state.param.coord, s, self.param.missingness_threshold
+            )
             for s in self.state.coord.sample_set_names
         }
 
@@ -328,13 +387,29 @@ class TrackMissingnessPage(Viewer):
             for s in self.state.coord.sample_set_names
         }
 
-        self._table = TrackIndicatorTable(
+        self._table = TrackIndicatorMissingnessTable(
             state=self.state,
             hist_rxs=self._hist_rx,  # dict of rx
         )
 
-    def _compute_hist(self, maxbins, coord, sample_set):
-        bins = np.arange(maxbins + 1)
+    def _compute_hist(self, coord, sample_set, missingness_threshold):
         return self.track.missingness_hist(
-            bins=bins, coord=coord.with_sample_sets([sample_set])
+            coord=coord.with_sample_sets([sample_set]), threshold=missingness_threshold
         )
+
+    def _render_plots(self, active):
+        return pn.GridBox(*[self._plots[s] for s in active], ncols=2)
+
+    def __panel__(self):
+        # active-set widget drives the plot grid; table shows all sets always
+        chooser = pn.widgets.CheckBoxGroup.from_param(
+            self.param.active_sets, inline=True
+        )
+        plot_grid = pn.bind(self._render_plots, self.param.active_sets)
+        return pn.Column(
+            pn.Row(chooser, self.param.missingness_threshold), self._table, plot_grid
+        )
+
+    @property
+    def table(self):
+        return self._table
