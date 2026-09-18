@@ -38,6 +38,7 @@ class PrecomputedTrack:
 
     def __init__(self, dt: xr.DataTree | None, track_name: str = "depth"):
         self._local_cache = {}
+        self._contig_mean_cache: dict[str, np.ndarray] = {}
         self._id = datatree_id(dt, schema_version=config.SCHEMA_VERSION)
         if dt is None:
             self.sum = None
@@ -51,9 +52,6 @@ class PrecomputedTrack:
             if m and m.group("base") == track_name:
                 self.missingness[int(m.group("t"))] = dt[key]
 
-        # Calculate full histogram on setup
-        self._sum_hist_cache: dict[str, np.ndarray] = {}
-
     @pn.cache
     def _sum_hist_cached(self, dataset_id: str, sample_set: str) -> np.ndarray:
         sums = self.sum["values"].sel(sample_set=sample_set).data
@@ -64,6 +62,18 @@ class PrecomputedTrack:
         if sample_set not in self._local_cache:
             self._local_cache[sample_set] = self._sum_hist_cached(self._id, sample_set)
         return self._local_cache[sample_set]
+
+    def contig_mean_coverage(self, sample_set: str) -> np.ndarray:
+        if sample_set not in self._contig_mean_cache:
+            self._contig_mean_cache[sample_set] = self._compute_contig_mean(sample_set)
+        return self._contig_mean_cache[sample_set]
+
+    def _compute_contig_mean(self, sample_set: str) -> np.ndarray:
+        sums = self.sum["values"].sel(sample_set=sample_set).values
+        offsets = self.sum["offsets"].values
+        lengths = np.diff(offsets)
+        per_contig_sum = np.add.reduceat(sums, offsets[:-1])
+        return per_contig_sum / lengths
 
 
 class Track:

@@ -186,6 +186,12 @@ class Coordinates:
         keep = np.isin(self._contigs_all, np.asarray(list(contigs))) & ~self.contig_mask
         return self._replace(contig_mask=~keep)
 
+    def with_all_contigs(
+        self,
+        contigs: Iterable[str] | None = None,
+    ) -> "Coordinates":
+        return self._replace(contig_mask=np.zeros_like(self.contig_mask))
+
     def with_samples(
         self,
         samples: Iterable[str] | None = None,
@@ -204,6 +210,10 @@ class Coordinates:
             return self._replace(sample_mask=np.zeros_like(self.sample_mask))
         keep = np.isin(self._sample_set_membership, sample_sets) & ~self.sample_mask
         return self._replace(sample_mask=~keep)
+
+    def replace_contigs(self, names):
+        mask = np.isin(self.contigs_all, names)
+        return self._with_contig_mask(mask)
 
     def reset(self, *, samples: bool = True, contigs: bool = True) -> "Coordinates":
         """Return a new Coordinates with masks reset (nothing hidden)."""
@@ -279,6 +289,10 @@ class Coordinates:
     @property
     def contigs(self):
         return self._contigs_all[~self.contig_mask]
+
+    @property
+    def contigs_all(self):
+        return self._contigs_all
 
     @property
     def n_contigs(self):

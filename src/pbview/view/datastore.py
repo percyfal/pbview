@@ -54,6 +54,8 @@ class DataStoreView(Viewer):
             ),
         }
         self.pages["Summary"] = SummaryPage(
+            state=self.state,
+            track=self.state.track(),
             coverage_page=self.pages["Coverage"],
             missingness_page=self.pages["Missingness"],
         )

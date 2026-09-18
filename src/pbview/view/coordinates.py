@@ -32,16 +32,6 @@ class CoordinatesView(Viewer):
         self.upper_w = pn.widgets.FloatInput.from_param(
             state.param.upper, name="Max contig length", sizing_mode="stretch_width"
         )
-        self.samples_w = pn.Column(
-            pn.widgets.MultiChoice.from_param(state.param.samples, name="Mask samples"),
-            height=150,
-            scroll=True,
-        )
-        self.contigs_w = pn.Column(
-            pn.widgets.MultiChoice.from_param(state.param.contigs, name="Mask contigs"),
-            height=150,
-            scroll=True,
-        )
 
         self.genome_size_pane = pn.bind(
             lambda *_: pn.Column(
@@ -51,7 +41,7 @@ class CoordinatesView(Viewer):
                     bounds=(0, self.state.coord.genome_size_all),
                     horizontal=True,
                     format="{value} bp",
-                    width=75,
+                    width=120,
                     height=int(config.SIDEBAR_WIDTH * 0.9),
                 ),
                 pn.indicators.LinearGauge(
@@ -64,7 +54,7 @@ class CoordinatesView(Viewer):
                     bounds=(0, 100),
                     horizontal=True,
                     format="{value} %",
-                    width=50,
+                    width=90,
                     colors=["red"],
                     height=int(config.SIDEBAR_WIDTH * 0.9),
                 ),
@@ -84,12 +74,6 @@ class CoordinatesView(Viewer):
             state.param.samples,
             state.param.contigs,
         )
-        self.hist_pane = pn.panel(
-            pn.bind(
-                self._hist, state.param.lower, state.param.upper, state.param.samples
-            ),
-            loading_indicator=True,
-        )
 
     def _hist(self, *_):
         return self.state.contigs_df().hvplot.hist(
@@ -102,12 +86,9 @@ class CoordinatesView(Viewer):
         return pn.Column(
             self.genome_size_pane,
             self.summary_pane,
-            self.samples_w,
-            self.contigs_w,
             pn.Column(
-                "### Contig selection and statistics",
+                "### Contig selection on length",
                 self.lower_w,
                 self.upper_w,
             ),
-            self.hist_pane,
         )
