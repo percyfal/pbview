@@ -18,6 +18,7 @@ dependencies = [
   "jsonschema>=4.24.0",
   "distributed>=2026.7.1,<2027",
   "pyarrow>=25.0.1,<26",
+  "pyranges1>=1.4.4,<2",
 ]
 
 [dependency-groups]
@@ -93,13 +94,18 @@ pbview = { path = ".", editable = true }
 [tool.pixi.tasks.init_store]
 cmd = "test -d 'store' && echo 'store exists' || pbview import store tests/data/s*.per-base.d4"
 
+[tool.pixi.tasks.preprocess]
+cmd = "test -d 'store/depth_sum' && 'preprocessing done' || pbview preprocess store --sampleinfo tests/data/sampleinfo.tsv"
+depends-on = ["init_store"]
+
 [tool.pixi.tasks.dev]
 args = [
   { "arg" = "port", default = "5507" },
   { "arg" = "input", default = "store" },
+  { "arg" = "options", default = "--sampleinfo tests/data/sampleinfo.tsv" },
 ]
-depends-on = ["init_store"]
-cmd = "panel serve src/pbview --dev --show --args serve --port {{port}} {{ input }}"
+depends-on = ["preprocess"]
+cmd = "panel serve --port {{port}} src/pbview --dev --show --args serve {{ options }} {{ input }} "
 
 [tool.pixi.tasks.sandbox]
 args = [{ "arg" = "port", default = "5508" }]

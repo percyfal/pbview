@@ -7,14 +7,9 @@ import pandas as pd  # noqa
 import panel as pn  # noqa
 from click.decorators import FC
 
-from pbview import (
-    # cache,  # noqa
-    cli as pbview_cli,  # noqa
-    datastore,  # noqa
-)
+from pbview import cli as pbview_cli
+from pbview.model import datastore  # noqa
 
-# from pbview.d4utils import commands as d4utils_cmd  # noqa
-# from pbview.model import d4  # noqa
 from pbview.logging import log_level  # noqa
 from pbview.logging import app_logger as logger  # noqa
 
@@ -33,15 +28,6 @@ def log_filter_option(expose_value: bool = False) -> Callable[[FC], FC]:
         expose_value=expose_value,
         help="Do not filter the output log (advanced debugging only)",
     )
-
-
-# def cachedir_option() -> Callable[[FC], FC]:
-#     return click.option(
-#         "--cachedir",
-#         default=cache.CACHEDIR,
-#         expose_value=True,
-#         help="Set the cache dir",
-#     )
 
 
 def path_argument(
@@ -92,7 +78,7 @@ def threads_option(default: int = 1) -> Callable[[FC], FC]:
     return click.option(
         "--threads",
         default=default,
-        help="Number of threads per worker to use for pre-processing",
+        help="Number of threads / threads per worker",
         type=click.IntRange(1, multiprocessing.cpu_count()),
     )
 
@@ -106,6 +92,21 @@ def workers_option(default: int = 1) -> Callable[[FC], FC]:
     )
 
 
+def dashboard_option(default: int = 44446) -> Callable[[FC], FC]:
+    return click.option(
+        "--dashboard", default=default, help="Port to serve dashboard on", type=int
+    )
+
+
+def use_dask_option(default: bool = False) -> Callable[[FC], FC]:
+    return click.option(
+        "--use-dask/--no-use-dask",
+        default=default,
+        help="Use dask for multiprocessing. Provides dashboard",
+        type=bool,
+    )
+
+
 def threshold_option(default: int = 3) -> Callable[[FC], FC]:
     return click.option(
         "--threshold",
@@ -114,13 +115,28 @@ def threshold_option(default: int = 3) -> Callable[[FC], FC]:
     )
 
 
+def dask_port_option(default: int = 18786) -> Callable[[FC], FC]:
+    return click.option("--dask-port", default=default, help="Port to serve on")
+
+
 def max_bins_option(default: int = 1000) -> Callable[[FC], FC]:
     return click.option(
         "--max-bins", default=default, help="Maximum number of bins to display"
     )
 
 
-def port_option(default: int = 8080) -> Callable[[FC], FC]:
+def chunk_size_option(default: int = 1000000) -> Callable[[FC], FC]:
+    return click.option(
+        "--chunk-size",
+        default=default,
+        help=(
+            "Chunk size for processing large files. Consider "
+            "reducing if number of samples is large (n>500)."
+        ),
+    )
+
+
+def port_option(default: int = 5507) -> Callable[[FC], FC]:
     return click.option("--port", default=default, help="Port to serve on")
 
 
@@ -171,23 +187,26 @@ def cli():
 @track_name_option()
 @log_level()
 @progress_option()
+@chunk_size_option()
 def import_d4(
     path: Path | str,
     d4: list[Path] | list[str],
     track_name: str,
     workers: int,
     progress: bool,
-):
+    chunk_size: int,
+) -> None:
     """Import d4 files into a pbzarr store."""
     if len(d4) == 0:
         logger.error("Provide at least one d4 source file to import")
         return
-    datastore.import_d4(
+    pbview_cli.import_d4(
         path,
         d4=d4,
         track=track_name,
         workers=workers,
         progress=progress,
+        chunk_size=chunk_size,
     )
 
 
@@ -196,24 +215,44 @@ def import_d4(
 @annotation_file_option()
 @sampleinfo_option()
 @port_option()
+@dask_port_option()
 @show_option()
 @threads_option()
+@workers_option()
+@dashboard_option()
+@chunk_size_option()
+@use_dask_option()
 @log_filter_option()
 @log_level()
-# @cachedir_option()
-@click.option("--summarize", is_flag=True, default=False, help="Run summarize analysis")
 @click.option("--servable", is_flag=True, default=False, help="Make app servable")
-def serve(path, annotation_file, sampleinfo, port, show, threads, servable, summarize):
+def serve(
+    path,
+    annotation_file,
+    sampleinfo,
+    port,
+    dask_port,
+    show,
+    threads,
+    servable,
+    workers,
+    dashboard,
+    chunk_size,
+    use_dask,
+):
     """Serve the app."""
     app.serve(
         path=path,
         port=port,
+        dask_port=dask_port,
         show=show,
-        threads=threads,
+        threads_per_worker=threads,
+        n_workers=workers,
         servable=servable,
-        # cachedir=cachedir,
+        sampleinfo=sampleinfo,
+        dashboard=dashboard,
         verbose=False,
-        summarize=summarize,
+        chunk_size=chunk_size,
+        use_dask=use_dask,
     )
 
 
@@ -249,6 +288,33 @@ def summarize(
         workers=workers,
     )
     logger.info(data)
+
+
+@cli.command()
+@path_argument(exists=True, dir_okay=True, nargs=1)
+@workers_option(default=1)
+@track_name_option()
+@log_level()
+@progress_option()
+@chunk_size_option()
+@sampleinfo_option()
+def preprocess(
+    path: Path | str,
+    track_name: str,
+    workers: int,
+    progress: bool,
+    chunk_size: int,
+    sampleinfo: str | None = None,
+) -> None:
+    """Preprocess the pbzarr store for faster access."""
+    pbview_cli.preprocess(
+        path,
+        track=track_name,
+        workers=workers,
+        progress=progress,
+        chunk_size=chunk_size,
+        sampleinfo=sampleinfo,
+    )
 
 
 if __name__ == "__main__":

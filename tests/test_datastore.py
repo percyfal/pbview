@@ -6,7 +6,8 @@ import pbzarr
 import pytest
 import zarr
 
-from pbview.datastore import DataStore, Track
+from pbview.model.datastore import DataStore
+from pbview.model.track import Track
 
 
 @pytest.fixture

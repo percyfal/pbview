@@ -53,3 +53,10 @@ COLORS = process_cmap(
 
 # Sample set settings
 DEFAULT_SAMPLE_SET = "ALL"
+
+# Chunking
+MIN_POSITION_CHUNK_SIZE = 1_000_000
+TARGET_BYTES = 100_000_000
+
+# Schema
+SCHEMA_VERSION = 1

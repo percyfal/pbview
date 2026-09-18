@@ -6,7 +6,7 @@ import panel as pn
 import pytest
 from pytest import fixture
 
-from pbview import datastore
+from pbview import cli
 
 dirname = Path(os.path.abspath(os.path.dirname(__file__)))
 
@@ -46,10 +46,11 @@ def d4all(d4file) -> list[Path]:
 
 
 @pytest.fixture(scope="session")
-def store(tmpdir_factory, d4all):
+def store(tmpdir_factory, d4all, sampleinfo):
     p = Path(tmpdir_factory.mktemp("store")) / "datastore.zarr"
     d4all = [str(p) for p in d4all]
-    datastore.import_d4(str(p), d4all)
+    cli.import_d4(str(p), d4all)
+    cli.preprocess(p, sampleinfo=sampleinfo)
     return p
 
 
@@ -59,12 +60,12 @@ def sampleinfo():
 
 
 @pytest.fixture(scope="session")
-def gff():
+def annotation():
     return pytest.dname / "data" / "annotation.gff.gz"
 
 
 @pytest.fixture(scope="session")
-def gff_df():
+def annotation_df():
     return pd.DataFrame(
         {
             "seqid": ["chr1", "chr1", "chr2", "chr2"],
@@ -86,8 +87,8 @@ def gff_df():
 
 
 @pytest.fixture(scope="session")
-def gff_df_path(gff_df, tmpdir_factory):
+def annotation_df_path(annotation_df, tmpdir_factory):
     p = tmpdir_factory.mktemp("annotation")
     outfile = p / "annotation.gff"
-    gff_df.to_csv(str(outfile), index=False, header=None, sep="\t")
+    annotation_df.to_csv(str(outfile), index=False, header=None, sep="\t")
     return Path(outfile)
