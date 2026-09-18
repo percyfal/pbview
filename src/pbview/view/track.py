@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import panel as pn
 import param
+from bokeh.models.widgets.tables import NumberFormatter
 from panel.viewable import Viewer
 
 from pbview import config
@@ -30,6 +31,7 @@ pn.extension("tabulator")
 class TrackIndicatorTableBase(Viewer):
     state = param.ClassSelector(class_=SelectionStateBase, is_instance=True)
     hist_rxs = param.Dict()  # {sample_set: ((counts, bins))}
+    formatters = {}
 
     def __init__(self, **params):
         super().__init__(**params)
@@ -47,12 +49,29 @@ class TrackIndicatorTableBase(Viewer):
         return pn.widgets.Tabulator(
             self._df_rx,
             disabled=True,
-            layout="fit_data_stretch",
+            layout="fit_data_table",
             sizing_mode="stretch_width",
+            formatters=self.formatters,
         )
 
 
 class TrackIndicatorCoverageTable(TrackIndicatorTableBase):
+    right = {"text_align": "right"}
+    formatters = {
+        "lower_by_sample": NumberFormatter(format="0.0", **right),
+        "upper_by_sample": NumberFormatter(format="0.0", **right),
+        "frac_active_genome": NumberFormatter(format="0.0%", **right),
+        "frac_full_genome": NumberFormatter(format="0.0%", **right),
+        "mean": NumberFormatter(format="0.0", **right),
+        "60%": NumberFormatter(format="0.0", **right),
+        "70%": NumberFormatter(format="0.0", **right),
+        "80%": NumberFormatter(format="0.0", **right),
+        "90%": NumberFormatter(format="0.0", **right),
+        "med + 1std": NumberFormatter(format="0.0", **right),
+        "med + 2std": NumberFormatter(format="0.0", **right),
+        "std": NumberFormatter(format="0.0", **right),
+    }
+
     @property
     def _extra_deps(self, **params):
         retval = []
@@ -78,25 +97,34 @@ class TrackIndicatorCoverageTable(TrackIndicatorTableBase):
                 {
                     "sample_set": s,
                     "lower": lo,
+                    "lower_by_sample": lo / coord.with_sample_sets([s]).n_samples,
                     "upper": up,
+                    "upper_by_sample": up / coord.with_sample_sets([s]).n_samples,
                     "accessible_bp": accessible,
                     "frac_active_genome": accessible / coord.genome_size,
                     "frac_full_genome": accessible / coord.genome_size_all,
                     "median": stats["median"],
-                    "mean": round(stats["mean"], 1),
-                    "60%": round(stats["mean"] * 0.6, 1),
-                    "70%": round(stats["mean"] * 0.6, 1),
-                    "80%": round(stats["mean"] * 0.6, 1),
-                    "90%": round(stats["mean"] * 0.6, 1),
-                    "med + 1std": round(stats["median"] + stats["std"]),
-                    "med + 2std": round(stats["median"] + 2 * stats["std"]),
-                    "std": round(stats["std"], 1),
+                    "mean": stats["mean"],
+                    "60%": stats["mean"] * 0.6,
+                    "70%": stats["mean"] * 0.7,
+                    "80%": stats["mean"] * 0.8,
+                    "90%": stats["mean"] * 0.9,
+                    "med + 1std": stats["median"] + stats["std"],
+                    "med + 2std": stats["median"] + 2 * stats["std"],
+                    "std": stats["std"],
                 }
             )
         return pd.DataFrame(rows)
 
 
 class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
+    right = {"text_align": "right"}
+    formatters = {
+        "missingness_by_sample": NumberFormatter(format="0.0%", **right),
+        "frac_active_genome": NumberFormatter(format="0.0%", **right),
+        "frac_full_genome": NumberFormatter(format="0.0%", **right),
+    }
+
     @property
     def _extra_deps(self, **params):
         retval = []
@@ -120,94 +148,14 @@ class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
                 {
                     "sample_set": s,
                     "missingness": missingness,
+                    "missingness_by_sample": missingness
+                    / coord.with_sample_sets([s]).n_samples,
                     "accessible_bp": accessible,
                     "frac_active_genome": accessible / coord.genome_size,
                     "frac_full_genome": accessible / coord.genome_size_all,
                 }
             )
         return pd.DataFrame(rows)
-
-
-class TrackIndicatorView(Viewer):
-    state = param.ClassSelector(class_=SelectionStateBase, is_instance=True)
-    sample_set = param.String()
-
-    def __init__(self, hist_rx, **params):
-        super().__init__(**params)
-        self._hist_rx = hist_rx
-        lo = self.state.param[f"lower_coverage_{self.sample_set}"]
-        hi = self.state.param[f"upper_coverage_{self.sample_set}"]
-        coord = self.state.param.coord
-
-        self._stats = pn.bind(self._render_stats, self._hist_rx)
-        self._accessible = pn.bind(
-            self._render_accessible, self._hist_rx, lo, hi, coord
-        )
-
-    def _render_stats(self, hist_data):
-        counts, bins = hist_data
-        s = hist_stats(counts, bins)
-        mean = s["mean"]
-        med = s["median"]
-        std = s["std"]
-        values = [
-            0.6 * mean,
-            0.7 * mean,
-            0.8 * mean,
-            0.9 * mean,
-            med + std,
-            med + 2 * std,
-        ]
-        return pn.Row(
-            pn.indicators.Number(name="Median", value=s["median"], format="{value:,}"),
-            pn.indicators.Number(name="Mean", value=s["mean"], format="{value:,.1f}"),
-            pn.indicators.Number(
-                name="60% mean", value=values[0], format="{value:,.1f}"
-            ),
-            pn.indicators.Number(
-                name="70% mean", value=values[1], format="{value:,.1f}"
-            ),
-            pn.indicators.Number(
-                name="80% mean", value=values[2], format="{value:,.1f}"
-            ),
-            pn.indicators.Number(
-                name="90% mean", value=values[3], format="{value:,.1f}"
-            ),
-            pn.indicators.Number(
-                name="median + 1std", value=values[4], format="{value:,.1f}"
-            ),
-            pn.indicators.Number(
-                name="median + 2std", value=values[5], format="{value:,.1f}"
-            ),
-        )
-
-    def _render_accessible(self, hist_data, lower, upper, coord):
-        counts, bins = hist_data
-        mask = (bins >= lower) & (bins <= upper)
-        accessible_bp = int(counts[mask].sum())
-        return pn.Row(
-            pn.indicators.Number(
-                name="Accessible", value=accessible_bp, format="{value:,}"
-            ),
-            pn.indicators.Number(
-                name="  of active",
-                value=accessible_bp / coord.genome_size,
-                format="{value:,.1%}",
-            ),
-            pn.indicators.Number(
-                name="  of total",
-                value=accessible_bp / coord.genome_size_all,
-                format="{value:,.1%}",
-            ),
-            pn.indicators.Number(
-                name="active / total",
-                value=coord.genome_size / coord.genome_size_all,
-                format="{value:,.1%}",
-            ),
-        )
-
-    def __panel__(self):
-        return pn.Column(self._stats, self._accessible)
 
 
 class TrackView(Viewer, param.ParameterizedABC):

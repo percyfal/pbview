@@ -65,10 +65,14 @@ class PrecomputedTrack:
 
     def contig_mean_coverage(self, sample_set: str) -> np.ndarray:
         if sample_set not in self._contig_mean_cache:
-            self._contig_mean_cache[sample_set] = self._compute_contig_mean(sample_set)
+            with ProgressBar():
+                self._contig_mean_cache[sample_set] = self._compute_contig_mean(
+                    sample_set
+                )
         return self._contig_mean_cache[sample_set]
 
     def _compute_contig_mean(self, sample_set: str) -> np.ndarray:
+        logger.info("Calculating mean contig coverages")
         sums = self.sum["values"].sel(sample_set=sample_set).values
         offsets = self.sum["offsets"].values
         lengths = np.diff(offsets)

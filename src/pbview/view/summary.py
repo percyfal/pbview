@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import panel as pn
 import param
-from bokeh.models import ColumnDataSource
+from bokeh.models import ColumnDataSource, HoverTool
 from bokeh.plotting import figure
 
 from pbview.model.selection import SelectionStateBase
@@ -46,11 +46,20 @@ class SummaryPage(pn.viewable.Viewer):
         self._pane = pn.pane.Bokeh(self._figure)
 
     def _make_figure(self):
+        hover = HoverTool(
+            tooltips=[
+                ("Contig", "@contig"),
+                ("Length", "@length"),
+                ("Mean coverage", "@mean"),
+                ("Total mean coverage", "@total_mean"),
+                ("Sample set", "@sample_set"),
+            ]
+        )
         p = figure(
             x_axis_type="log",
             sizing_mode="stretch_width",
             height=400,
-            tools="box_select,tap,pan,wheel_zoom,reset,save",
+            tools=["box_select", "tap", "pan", "wheel_zoom", "reset", "save", hover],
             active_drag="box_select",
             title="Contig length vs mean coverage",
         )
@@ -106,8 +115,9 @@ class SummaryPage(pn.viewable.Viewer):
                         "sample_set": s,
                         "contig": names,
                         "length": lengths,
-                        "mean": means,
+                        "mean": means / coord.with_sample_sets([s]).n_samples,
                         "selected": selected,
+                        "total_mean": means,
                     }
                 )
             )

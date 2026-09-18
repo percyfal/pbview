@@ -78,7 +78,7 @@ def threads_option(default: int = 1) -> Callable[[FC], FC]:
     return click.option(
         "--threads",
         default=default,
-        help="Number of threads per worker to use for pre-processing",
+        help="Number of threads / threads per worker",
         type=click.IntRange(1, multiprocessing.cpu_count()),
     )
 
@@ -92,12 +92,31 @@ def workers_option(default: int = 1) -> Callable[[FC], FC]:
     )
 
 
+def dashboard_option(default: int = 44446) -> Callable[[FC], FC]:
+    return click.option(
+        "--dashboard", default=default, help="Port to serve dashboard on", type=int
+    )
+
+
+def use_dask_option(default: bool = False) -> Callable[[FC], FC]:
+    return click.option(
+        "--use-dask/--no-use-dask",
+        default=default,
+        help="Use dask for multiprocessing. Provides dashboard",
+        type=bool,
+    )
+
+
 def threshold_option(default: int = 3) -> Callable[[FC], FC]:
     return click.option(
         "--threshold",
         default=default,
         help="Coverage threshold for calling a base as present",
     )
+
+
+def dask_port_option(default: int = 18786) -> Callable[[FC], FC]:
+    return click.option("--dask-port", default=default, help="Port to serve on")
 
 
 def max_bins_option(default: int = 1000) -> Callable[[FC], FC]:
@@ -117,7 +136,7 @@ def chunk_size_option(default: int = 1000000) -> Callable[[FC], FC]:
     )
 
 
-def port_option(default: int = 8080) -> Callable[[FC], FC]:
+def port_option(default: int = 5507) -> Callable[[FC], FC]:
     return click.option("--port", default=default, help="Port to serve on")
 
 
@@ -196,25 +215,44 @@ def import_d4(
 @annotation_file_option()
 @sampleinfo_option()
 @port_option()
+@dask_port_option()
 @show_option()
 @threads_option()
+@workers_option()
+@dashboard_option()
+@chunk_size_option()
+@use_dask_option()
 @log_filter_option()
 @log_level()
-# @cachedir_option()
-@click.option("--summarize", is_flag=True, default=False, help="Run summarize analysis")
 @click.option("--servable", is_flag=True, default=False, help="Make app servable")
-def serve(path, annotation_file, sampleinfo, port, show, threads, servable, summarize):
+def serve(
+    path,
+    annotation_file,
+    sampleinfo,
+    port,
+    dask_port,
+    show,
+    threads,
+    servable,
+    workers,
+    dashboard,
+    chunk_size,
+    use_dask,
+):
     """Serve the app."""
     app.serve(
         path=path,
         port=port,
+        dask_port=dask_port,
         show=show,
-        threads=threads,
+        threads_per_worker=threads,
+        n_workers=workers,
         servable=servable,
         sampleinfo=sampleinfo,
-        # cachedir=cachedir,
+        dashboard=dashboard,
         verbose=False,
-        summarize=summarize,
+        chunk_size=chunk_size,
+        use_dask=use_dask,
     )
 
 

@@ -97,11 +97,15 @@ def compute_threshold_defaults(
     result = {}
     track = datastore.tracks[active_track]
     for s in datastore.base_coord.sample_set_names:
+        coord = datastore.base_coord.with_sample_sets([s])
         h = track._pre.sum_hist(s)
         stats = hist_stats(h)
         lo = int(0.6 * stats["mean"])
-        hi = int(stats["mean"] + 2 * stats["std"])
         mb = int(hist_quantile(h, max_bin_q) * max_bin_headroom)
+        bins = np.arange(mb)
+        counts, bins = track.coverage_hist(bins=bins, coord=coord)
+        stats = hist_stats(counts, bins)
+        hi = int(stats["median"] + 2 * stats["std"])
         result[f"lower_coverage_{s}"] = lo
         result[f"upper_coverage_{s}"] = hi
         result[f"maxbins_{s}"] = mb
