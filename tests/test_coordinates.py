@@ -42,7 +42,6 @@ def coordinates(coordinate_args, sample_sets):
     return Coordinates(
         datastore=ds,
         sample_sets=sample_sets,
-        samples=ds.store[track].sample.values,
         contigs=ds.store[track].contigs.values,
         offsets=ds.store[track].offsets.values,
     ), param

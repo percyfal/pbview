@@ -48,7 +48,6 @@ class Coordinates:
         self,
         datastore: DataStore,
         *,
-        samples: npt.ArrayLike | xr.DataArray,
         contigs: npt.ArrayLike | xr.DataArray,
         offsets: npt.ArrayLike | xr.DataArray,
         sample_sets: npt.ArrayLike | None = None,
@@ -56,11 +55,10 @@ class Coordinates:
         contig_mask: npt.NDArray[np.bool_] | None = None,
     ) -> None:
         self._datastore = datastore
-        self._samples_all: npt.NDArray = np.asarray(samples)
         self._contigs_all: npt.NDArray = np.asarray(contigs)
         self._offsets: npt.NDArray[np.int64] = np.asarray(offsets, dtype=np.int64)
         # Masks: True = hidden. Default = keep everything
-        n_samples_all, n_contigs_all = self._samples_all.size, self._contigs_all.size
+        n_samples_all, n_contigs_all = self.n_samples_all, self._contigs_all.size
         self.sample_mask: npt.NDArray[np.bool_] = (
             np.zeros(n_samples_all, dtype=bool)
             if sample_mask is None
@@ -85,7 +83,6 @@ class Coordinates:
         )
         # Freeze the underlying arrays to catch accidental mutation.
         for arr in (
-            self._samples_all,
             self._contigs_all,
             self._offsets,
             self.sample_mask,
@@ -118,7 +115,7 @@ class Coordinates:
     def __hash__(self) -> int:
         return hash(
             (
-                id(self._samples_all),
+                id(self.samples_all),
                 id(self._contigs_all),
                 id(self._offsets),
                 self.sample_mask.tobytes(),
@@ -136,7 +133,6 @@ class Coordinates:
         new = self.__class__.__new__(self.__class__)
 
         new._datastore = self._datastore
-        new._samples_all = self._samples_all
         new._contigs_all = self._contigs_all
         new._offsets = self._offsets
         new._sample_set_membership = self._sample_set_membership
@@ -163,9 +159,9 @@ class Coordinates:
         """Return the name of the sample set that matches the current sample mask."""
         for name in self.sample_set_names:
             if name == "ALL":
-                members = self._samples_all
+                members = self.samples_all
             else:
-                members = self._samples_all[self._sample_set_membership == name]
+                members = self.samples_all[self._sample_set_membership == name]
             if np.array_equal(np.sort(members), np.sort(self.samples)):
                 return name
         return None
@@ -205,7 +201,7 @@ class Coordinates:
         """Keep only listed samples. `None` resets the sample mask."""
         if samples is None:
             return self._replace(sample_mask=np.zeros_like(self.sample_mask))
-        keep = np.isin(self._samples_all, np.asarray(list(samples))) & ~self.sample_mask
+        keep = np.isin(self.samples_all, np.asarray(list(samples))) & ~self.sample_mask
         return self._replace(sample_mask=~keep)
 
     def with_sample_sets(self, sample_sets: list[str]):
@@ -247,6 +243,15 @@ class Coordinates:
             offsets=group.offsets.values,
             sample_sets=sample_sets,
         )
+
+    @property
+    def samples_all(self) -> npt.NDArray:
+        """All samples in the dataset"""
+        return self._datastore.samples
+
+    @property
+    def n_samples_all(self) -> int:
+        return self._datastore.n_samples
 
     @cached_property
     def _contig_len_all(self) -> npt.NDArray[np.uint32]:
@@ -310,15 +315,11 @@ class Coordinates:
 
     @property
     def samples(self) -> Any:
-        return self._samples_all[~self.sample_mask]
+        return self.samples_all[~self.sample_mask]
 
     @property
     def n_samples(self):
         return int(self.samples.size)
-
-    @property
-    def n_samples_all(self):
-        return int(self._samples_all.size)
 
     @property
     def sample_set_membership(self):
@@ -373,7 +374,7 @@ class Coordinates:
             {
                 "sample_set": self._datastore.default_sample_set_membership,
                 "active": ~self.sample_mask,
-                "sample": self._samples_all,
+                "sample": self.samples_all,
             }
         )
         if self.has_sample_sets:
@@ -384,7 +385,7 @@ class Coordinates:
                         {
                             "sample_set": self._sample_set_membership,
                             "active": ~self.sample_mask,
-                            "sample": self._samples_all,
+                            "sample": self.samples_all,
                         }
                     ),
                 ]

@@ -81,7 +81,10 @@ class DataStore:
         except pbzarr.PbzError as e:
             logger.error("Error opening pbzarr store: %s", e)
             raise
+        # FIXME: The coordinates will later on live in the root group
         track = list(self.store.keys())[0]
+        # FIXME: temporary solution to retrieving the coordinates
+        self._store_coords = self.store[track].coords
         sample_sets = None
         self.sample_set_names = [config.DEFAULT_SAMPLE_SET]
         if sampleinfo is not None:
@@ -96,11 +99,8 @@ class DataStore:
             sample_sets = sampleinfo_df.loc[samples]["sample_set"].values
             self.sample_set_names.extend(list(set(sample_sets)))
 
-        self._samples_all = np.asarray(self.store[track].coords["sample"].values)
-
         self.base_coord = Coordinates(
             self,
-            samples=self.store[track].sample.values,
             contigs=self.store[track].contigs.values,
             offsets=self.store[track].offsets.values,
             sample_sets=sample_sets,
@@ -129,8 +129,17 @@ class DataStore:
         return self.store
 
     @functools.cached_property
+    def samples(self) -> npt.NDArray:
+        """All samples in the dataset"""
+        return np.asarray(self._store_coords["sample"].values)
+
+    @functools.cached_property
+    def n_samples(self) -> int:
+        return self.samples.size
+
+    @functools.cached_property
     def default_sample_set_membership(self) -> npt.NDArray:
-        return np.repeat(config.DEFAULT_SAMPLE_SET, self._samples_all.size)
+        return np.repeat(config.DEFAULT_SAMPLE_SET, self.n_samples)
 
     @functools.cached_property
     def sample_set_colors(self) -> dict[str, str]:
