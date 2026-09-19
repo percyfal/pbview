@@ -2,19 +2,24 @@
 Coordinates class and helper functions.
 """
 
+from __future__ import annotations
+
 __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
 from collections.abc import Iterable
 from functools import cached_property
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pyranges1 as pr
 import xarray as xr
+
+if TYPE_CHECKING:
+    from .datastore import DataStore
 
 from pbview import config
 
@@ -41,6 +46,7 @@ class Coordinates:
 
     def __init__(
         self,
+        datastore: DataStore,
         *,
         samples: npt.ArrayLike | xr.DataArray,
         contigs: npt.ArrayLike | xr.DataArray,
@@ -49,6 +55,7 @@ class Coordinates:
         sample_mask: npt.NDArray[np.bool_] | None = None,
         contig_mask: npt.NDArray[np.bool_] | None = None,
     ) -> None:
+        self._datastore = datastore
         self._samples_all: npt.NDArray = np.asarray(samples)
         self._contigs_all: npt.NDArray = np.asarray(contigs)
         self._offsets: npt.NDArray[np.int64] = np.asarray(offsets, dtype=np.int64)
@@ -129,6 +136,8 @@ class Coordinates:
     ) -> "Coordinates":
         """Return a new instance sharing raw data, with new masks."""
         new = self.__class__.__new__(self.__class__)
+
+        new._datastore = self._datastore
         new._samples_all = self._samples_all
         new._contigs_all = self._contigs_all
         new._offsets = self._offsets

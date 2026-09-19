@@ -2,9 +2,9 @@ from dataclasses import dataclass
 
 import numpy as np
 import pytest
-import xarray as xr
 
 from pbview.model.coordinates import Coordinates
+from pbview.model.datastore import DataStore
 
 
 @dataclass(frozen=True)
@@ -18,30 +18,14 @@ class ExpectedSampleSetsSize:
     n_samples_s1_s2_pop1: int
 
 
-@pytest.fixture(params=["vectors", "DataTree"])
-def coordinate_args(request):
-    samples = np.array([f"s{i}" for i in np.arange(1, 8)])
-    contigs = np.array(["chr1", "chr2", "chr3"])
-    offsets = np.array([0, 1_000_000, 1_900_000, 2_700_000])
-    if request.param == "vectors":
-        return {
-            "samples": samples,
-            "contigs": contigs,
-            "offsets": offsets,
-        }, request.param
-    elif request.param == "DataTree":
-        tree = xr.DataTree.from_dict(
-            {
-                "/": xr.Dataset(
-                    data_vars={
-                        "contigs": ("contigs", contigs),
-                        "offsets": ("offsets", offsets),
-                    },
-                    coords={"sample": samples},
-                )
-            }
-        )
-        return {"group": tree}, request.param
+@pytest.fixture()
+def ds(store, sampleinfo):
+    return DataStore(path=store, sampleinfo=sampleinfo)
+
+
+@pytest.fixture
+def coordinate_args(ds):
+    return ds, None
 
 
 @pytest.fixture(params=["has_sample_sets", "no_sample_sets"])
@@ -53,12 +37,15 @@ def sample_sets(request):
 
 @pytest.fixture
 def coordinates(coordinate_args, sample_sets):
-    args, param = coordinate_args
-    if param == "DataTree":
-        return Coordinates.from_datatree(
-            group=args["group"], sample_sets=sample_sets
-        ), param
-    return Coordinates(**args, sample_sets=sample_sets), param
+    ds, param = coordinate_args
+    track = list(ds.store.keys())[0]
+    return Coordinates(
+        datastore=ds,
+        sample_sets=sample_sets,
+        samples=ds.store[track].sample.values,
+        contigs=ds.store[track].contigs.values,
+        offsets=ds.store[track].offsets.values,
+    ), param
 
 
 @pytest.fixture

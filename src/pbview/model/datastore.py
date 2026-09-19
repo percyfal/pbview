@@ -95,8 +95,12 @@ class DataStore:
             sample_sets = sampleinfo_df.loc[samples]["sample_set"].values
             self.sample_set_names.extend(list(set(sample_sets)))
 
-        self.base_coord = Coordinates.from_datatree(
-            self.store[track], sample_sets=sample_sets
+        self.base_coord = Coordinates(
+            self,
+            samples=self.store[track].sample.values,
+            contigs=self.store[track].contigs.values,
+            offsets=self.store[track].offsets.values,
+            sample_sets=sample_sets,
         )
         self.tracks = {
             name: Track(

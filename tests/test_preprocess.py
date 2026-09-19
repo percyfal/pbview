@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 from pbview.model.datastore import DataStore
-from pbview.model.track import Track
 from pbview.preprocess.track import compute_track_missingness, compute_track_sum
 
 
@@ -13,7 +12,7 @@ def ds(store, sampleinfo):
 
 @pytest.fixture()
 def track(ds):
-    return Track("track", data=ds.store["depth"])
+    return ds.tracks["depth"]
 
 
 @pytest.fixture()
