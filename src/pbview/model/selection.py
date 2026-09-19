@@ -49,8 +49,8 @@ class SelectionStateBase(param.Parameterized):
         # Populate selector objects
         self.param.samples.objects = list(datastore.samples)
         self.samples = list(datastore.samples)
-        self.param.contigs.objects = list(datastore.base_coord._contigs_all)
-        self.contigs = list(datastore.base_coord._contigs_all)
+        self.param.contigs.objects = list(datastore.contigs)
+        self.contigs = list(datastore.contigs)
         self.param.missingness.bounds = (0, self.coord.n_samples_all)
 
         tracks = list(datastore.tracks.keys())

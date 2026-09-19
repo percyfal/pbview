@@ -101,7 +101,6 @@ class DataStore:
 
         self.base_coord = Coordinates(
             self,
-            contigs=self.store[track].contigs.values,
             offsets=self.store[track].offsets.values,
             sample_sets=sample_sets,
         )
@@ -136,6 +135,15 @@ class DataStore:
     @functools.cached_property
     def n_samples(self) -> int:
         return self.samples.size
+
+    @functools.cached_property
+    def contigs(self) -> npt.NDArray:
+        """All contigs in the dataset"""
+        return np.asarray(self._store_coords["contigs"].values)
+
+    @functools.cached_property
+    def n_contigs(self) -> int:
+        return self.contigs.size
 
     @functools.cached_property
     def default_sample_set_membership(self) -> npt.NDArray:

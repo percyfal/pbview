@@ -48,17 +48,15 @@ class Coordinates:
         self,
         datastore: DataStore,
         *,
-        contigs: npt.ArrayLike | xr.DataArray,
         offsets: npt.ArrayLike | xr.DataArray,
         sample_sets: npt.ArrayLike | None = None,
         sample_mask: npt.NDArray[np.bool_] | None = None,
         contig_mask: npt.NDArray[np.bool_] | None = None,
     ) -> None:
         self._datastore = datastore
-        self._contigs_all: npt.NDArray = np.asarray(contigs)
         self._offsets: npt.NDArray[np.int64] = np.asarray(offsets, dtype=np.int64)
         # Masks: True = hidden. Default = keep everything
-        n_samples_all, n_contigs_all = self.n_samples_all, self._contigs_all.size
+        n_samples_all, n_contigs_all = self.n_samples_all, self.n_contigs_all
         self.sample_mask: npt.NDArray[np.bool_] = (
             np.zeros(n_samples_all, dtype=bool)
             if sample_mask is None
@@ -83,7 +81,6 @@ class Coordinates:
         )
         # Freeze the underlying arrays to catch accidental mutation.
         for arr in (
-            self._contigs_all,
             self._offsets,
             self.sample_mask,
             self.contig_mask,
@@ -116,7 +113,7 @@ class Coordinates:
         return hash(
             (
                 id(self.samples_all),
-                id(self._contigs_all),
+                id(self.contigs_all),
                 id(self._offsets),
                 self.sample_mask.tobytes(),
                 self.contig_mask.tobytes(),
@@ -133,7 +130,6 @@ class Coordinates:
         new = self.__class__.__new__(self.__class__)
 
         new._datastore = self._datastore
-        new._contigs_all = self._contigs_all
         new._offsets = self._offsets
         new._sample_set_membership = self._sample_set_membership
         new.sample_mask = (
@@ -185,7 +181,7 @@ class Coordinates:
         """Keep only listed contigs. `None` resets the contig mask."""
         if contigs is None:
             return self._replace(contig_mask=np.zeros_like(self.contig_mask))
-        keep = np.isin(self._contigs_all, np.asarray(list(contigs))) & ~self.contig_mask
+        keep = np.isin(self.contigs_all, np.asarray(list(contigs))) & ~self.contig_mask
         return self._replace(contig_mask=~keep)
 
     def with_all_contigs(
@@ -253,6 +249,15 @@ class Coordinates:
     def n_samples_all(self) -> int:
         return self._datastore.n_samples
 
+    @property
+    def contigs_all(self) -> npt.NDArray:
+        """All contigs in the dataset"""
+        return self._datastore.contigs
+
+    @property
+    def n_contigs_all(self) -> int:
+        return self._datastore.n_contigs
+
     @cached_property
     def _contig_len_all(self) -> npt.NDArray[np.uint32]:
         return np.diff(self._offsets).astype(np.uint32)
@@ -273,7 +278,7 @@ class Coordinates:
     def contig_idx(self) -> dict:
         """Return a dict mapping of chromosome to index.
         Returns the mapping for the full set of contigs"""
-        return {c: i for i, c in enumerate(self._contigs_all)}
+        return {c: i for i, c in enumerate(self.contigs_all)}
 
     @cached_property
     def contig_indices(self) -> npt.NDArray[np.int64]:
@@ -299,19 +304,11 @@ class Coordinates:
 
     @property
     def contigs(self):
-        return self._contigs_all[~self.contig_mask]
-
-    @property
-    def contigs_all(self):
-        return self._contigs_all
+        return self.contigs_all[~self.contig_mask]
 
     @property
     def n_contigs(self):
         return self.contigs.size
-
-    @property
-    def n_contigs_all(self) -> int:
-        return int(self._contigs_all.size)
 
     @property
     def samples(self) -> Any:
