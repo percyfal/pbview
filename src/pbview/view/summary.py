@@ -8,13 +8,12 @@ __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-18"
 
-import holoviews as hv
 import hvplot.pandas  # noqa
 import numpy as np
 import pandas as pd
 import panel as pn
 import param
-from bokeh.models import ColumnDataSource, HoverTool
+from bokeh.models import ColumnDataSource, HoverTool, CDSView, GroupFilter
 from bokeh.plotting import figure
 
 from pbview.model.selection import SelectionStateBase
@@ -30,12 +29,12 @@ class SummaryPage(pn.viewable.Viewer):
     def __init__(self, coverage_page, missingness_page, **params):
         super().__init__(**params)
         self._suspend = True
+        self._color_map = self.state.datastore.sample_set_colors
         self._source = ColumnDataSource(
             data=dict(length=[], mean=[], contig=[], color=[])
         )
         self._source.selected.on_change("indices", self._on_select)
 
-        # self._current_df = None
         self._cov_table = coverage_page.table
         self._mis_table = missingness_page.table
 
@@ -63,14 +62,20 @@ class SummaryPage(pn.viewable.Viewer):
             active_drag="box_select",
             title="Contig length vs mean coverage",
         )
-        p.scatter(
-            "length",
-            "mean",
-            source=self._source,
-            color="color",
-            size=8,
-            alpha="selected",
-        )
+        renderers = {}
+        for s, color in self._color_map.items():
+            view = CDSView(filter=GroupFilter(column_name="sample_set", group=s))
+            r = p.scatter(
+                "length",
+                "mean",
+                source=self._source,
+                view=view,
+                fill_color=color,
+                line_color=color,
+                size=12,
+                legend_label=s,
+            )
+            renderers[s] = r
         return p
 
     def _refresh(self):
@@ -105,7 +110,7 @@ class SummaryPage(pn.viewable.Viewer):
         coord = self.state.coord
         names = coord.contigs_all
         lengths = coord.contig_len_all
-        selected = np.asarray(~coord.contig_mask, dtype=np.int8) + 0.3
+        selected = np.asarray(~coord.contig_mask, dtype=np.int8) / 2 + 0.3
         dflist = []
         for s in coord.sample_set_names:
             means = self.track._pre.contig_mean_coverage(s)
@@ -122,10 +127,6 @@ class SummaryPage(pn.viewable.Viewer):
                 )
             )
         df = pd.concat(dflist)
-        df["color"] = df["sample_set"].map(
-            dict(zip(df["sample_set"].unique(), hv.Cycle("Category10").values))
-        )
-
         return df
 
     def __panel__(self):

@@ -110,9 +110,9 @@ def test_coverage_hist(track, coord):
 def test_missingness_hist(track, coord):
     bins = np.arange(0, 11)
     data, _ = track.missingness_hist(coord=coord, threshold=0)
-    assert data[0] == 98944
+    assert data[-1] == 98944
     data, _ = track.missingness_hist(coord=coord, threshold=2)
-    assert data[0] == 146622
+    assert data[-1] == 146622
     data, _ = track.missingness_hist(coord=coord, threshold=10)
     data, bins = track.missingness_hist(coord=coord, threshold=10)
 

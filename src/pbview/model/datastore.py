@@ -8,22 +8,34 @@ __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
+import functools
 import json
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, override
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import pbzarr
 import xarray as xr
 import zarr
 
+from pbview import config
 from pbview.logging import app_logger as logger
 from pbview.model.coordinates import Coordinates
 from pbview.model.track import Track
 
 xr.set_options(display_expand_attrs=False)
+
+
+def _to_hex(color):
+    if isinstance(color, str):
+        return color
+    r, g, b = color[:3]
+    if max(r, g, b) <= 1:
+        r, g, b = int(r * 255), int(g * 255), int(b * 255)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 class NpEncoder(json.JSONEncoder):
@@ -69,22 +81,17 @@ class DataStore:
         except pbzarr.PbzError as e:
             logger.error("Error opening pbzarr store: %s", e)
             raise
+        # FIXME: The coordinates will later on live in the root group
         track = list(self.store.keys())[0]
-        sample_sets = None
-        if sampleinfo is not None:
-            sampleinfo_df = pd.read_table(
-                sampleinfo,
-                header=None,
-                sep=r"\s+",
-                index_col=0,
-                names=["sample", "sample_set"],
-            )
-            samples = self.store[track].coords["sample"].values
-            sample_sets = sampleinfo_df.loc[samples]["sample_set"].values
+        # FIXME: temporary solution to retrieving the coordinates
+        self._store_coords = self.store[track].coords
 
-        self.base_coord = Coordinates.from_datatree(
-            self.store[track], sample_sets=sample_sets
-        )
+        self._has_sampleinfo = sampleinfo is not None
+        self._user_sample_set_membership = self._parse_sampleinfo(sampleinfo)
+        if self._has_sampleinfo:
+            self._user_sample_set_membership.setflags(write=False)
+
+        self.base_coord = Coordinates(self)
         self.tracks = {
             name: Track(
                 track_name=name,
@@ -100,6 +107,21 @@ class DataStore:
     def __str__(self) -> str:
         return f"DataStore(path={self.path}, datasets={self.tracks})"
 
+    def _parse_sampleinfo(self, sampleinfo) -> npt.NDArray | None:
+        if sampleinfo is None:
+            return None
+        df = pd.read_table(
+            sampleinfo,
+            header=None,
+            sep=r"\s+",
+            index_col=0,
+            names=["sample", "sample_set"],
+        )
+        missing = set(self.samples) - set(df.index)
+        if missing:
+            raise ValueError(f"Samples missing from sampleinfo: {sorted(missing)[:5]}")
+        return df.loc[self.samples, "sample_set"].to_numpy(dtype=str)
+
     @property
     def title(self):
         return self.path
@@ -107,6 +129,95 @@ class DataStore:
     @property
     def data(self) -> str:
         return self.store
+
+    @functools.cached_property
+    def samples(self) -> npt.NDArray:
+        """All samples in the dataset"""
+        return np.asarray(self._store_coords["sample"].values)
+
+    @functools.cached_property
+    def n_samples(self) -> int:
+        return self.samples.size
+
+    @functools.cached_property
+    def contigs(self) -> npt.NDArray:
+        """All contigs in the dataset"""
+        return np.asarray(self._store_coords["contigs"].values)
+
+    @functools.cached_property
+    def n_contigs(self) -> int:
+        return self.contigs.size
+
+    @functools.cached_property
+    def offsets(self) -> npt.NDArray:
+        """Contig offsets"""
+        return np.asarray(self._store_coords["offsets"].values)
+
+    @functools.cached_property
+    def default_sample_set_name(self) -> str:
+        if self.has_sample_sets and len(set(self.sample_set_membership)) == 1:
+            return str(self.sample_set_membership[0])
+        return config.DEFAULT_SAMPLE_SET
+
+    @functools.cached_property
+    def default_sample_set_membership(self) -> npt.NDArray:
+        return np.repeat(self.default_sample_set_name, self.n_samples)
+
+    @functools.cached_property
+    def sample_set_membership(self) -> npt.NDArray:
+        if self._has_sampleinfo:
+            return self._user_sample_set_membership
+        return self.default_sample_set_membership
+
+    @functools.cached_property
+    def sample_set_names(self) -> list:
+        return [self.default_sample_set_name, *self.user_sample_set_names]
+
+    @functools.cached_property
+    def n_sample_sets(self) -> int:
+        return len(self.sample_set_names)
+
+    @functools.cached_property
+    def user_sample_set_names(self) -> list[str]:
+        if not self.has_sample_sets:
+            return []
+        names = np.unique(self.sample_set_membership).tolist()
+        if len(names) == 1:
+            return []
+        return sorted(names)
+
+    @functools.cached_property
+    def n_user_sample_set_names(self) -> int:
+        return len(self.user_sample_set_names)
+
+    @property
+    def has_sample_sets(self) -> bool:
+        return self._has_sampleinfo
+
+    @functools.cached_property
+    def sample_set_colors(self) -> dict[str, str]:
+        import colorcet as cc
+
+        if len(self.sample_set_names) > 8:
+            palette = cc.glasbey_category10
+            return {
+                s: _to_hex(palette[i % len(palette)])
+                for i, s in enumerate(self.sample_set_names)
+            }
+        # Okabe-Ito palette
+        palette = [
+            "#E69F00",
+            "#56B4E9",
+            "#009E73",
+            "#F0E442",
+            "#0072B2",
+            "#D55E00",
+            "#CC79A7",
+            "#000000",
+        ]
+        return {
+            s: palette[i % len(palette)] for i, s in enumerate(self.sample_set_names)
+        }
 
     def summary(self) -> None:
         return {
