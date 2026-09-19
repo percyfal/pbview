@@ -91,10 +91,7 @@ class DataStore:
         if self._has_sampleinfo:
             self._user_sample_set_membership.setflags(write=False)
 
-        self.base_coord = Coordinates(
-            self,
-            sample_sets=self.sample_set_names,
-        )
+        self.base_coord = Coordinates(self)
         self.tracks = {
             name: Track(
                 track_name=name,

@@ -38,9 +38,9 @@ def coordinate_args(ds):
 
 
 @pytest.fixture
-def coordinates(coordinate_args, sample_sets):
+def coordinates(coordinate_args):
     ds, param = coordinate_args
-    return Coordinates(datastore=ds, sample_sets=sample_sets), param
+    return Coordinates(datastore=ds), param
 
 
 @pytest.fixture

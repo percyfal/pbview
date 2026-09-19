@@ -47,7 +47,6 @@ class Coordinates:
         self,
         datastore: DataStore,
         *,
-        sample_sets: npt.ArrayLike | None = None,
         sample_mask: npt.NDArray[np.bool_] | None = None,
         contig_mask: npt.NDArray[np.bool_] | None = None,
     ) -> None:
@@ -130,9 +129,7 @@ class Coordinates:
             if name == "ALL":
                 members = self.samples_all
             else:
-                members = self.samples_all[
-                    self._datastore.sample_set_membership == name
-                ]
+                members = self.samples_all[self.sample_set_membership_all == name]
             if np.array_equal(np.sort(members), np.sort(self.samples)):
                 return name
         return None
@@ -201,18 +198,6 @@ class Coordinates:
         return self._replace(
             sample_mask=np.zeros_like(self._sample_mask),
             contig_mask=np.zeros_like(self._contig_mask),
-        )
-
-    @classmethod
-    def from_datatree(
-        cls, group: xr.DataTree, sample_sets: npt.ArrayLike | None = None
-    ) -> "Coordinates":
-        """Make base coordinates from DataTree"""
-        return cls(
-            samples=group.sample.values,
-            contigs=group.contigs.values,
-            offsets=group.offsets.values,
-            sample_sets=sample_sets,
         )
 
     @property
@@ -329,14 +314,14 @@ class Coordinates:
     @property
     def n_user_sample_sets_all(self):
         """Return user sample sets size for entire dataset"""
-        return len(self._datastore.user_sample_set_names)
+        return len(self.user_sample_set_names_all)
 
     @property
     def user_sample_set_names(self) -> list[str]:
         """Return user sample set names for the current selection"""
         if not self.has_sample_sets:
             return []
-        selected_members = self._datastore.sample_set_membership[~self._sample_mask]
+        selected_members = self.sample_set_membership_all[~self._sample_mask]
         present = np.unique(selected_members).tolist()
         return [s for s in present if s != self.default_sample_set_name]
 
