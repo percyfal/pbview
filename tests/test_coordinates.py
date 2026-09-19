@@ -18,8 +18,17 @@ class ExpectedSampleSetsSize:
     n_samples_s1_s2_pop1: int
 
 
+@pytest.fixture(params=["has_sample_sets", "no_sample_sets"])
+def sample_sets(request):
+    if request.param == "has_sample_sets":
+        return np.array(["pop1", "pop1", "pop1", "pop2", "pop2", "pop3", "pop3"])
+    return None
+
+
 @pytest.fixture()
-def ds(store, sampleinfo):
+def ds(store, sampleinfo, sample_sets):
+    if sample_sets is None:
+        return DataStore(path=store)
     return DataStore(path=store, sampleinfo=sampleinfo)
 
 
@@ -28,20 +37,10 @@ def coordinate_args(ds):
     return ds, None
 
 
-@pytest.fixture(params=["has_sample_sets", "no_sample_sets"])
-def sample_sets(request):
-    if request.param == "has_sample_sets":
-        return np.array(["pop1", "pop1", "pop1", "pop2", "pop2", "pop3", "pop3"])
-    return None
-
-
 @pytest.fixture
 def coordinates(coordinate_args, sample_sets):
     ds, param = coordinate_args
-    return Coordinates(
-        datastore=ds,
-        sample_sets=sample_sets,
-    ), param
+    return Coordinates(datastore=ds, sample_sets=sample_sets), param
 
 
 @pytest.fixture

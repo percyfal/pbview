@@ -85,23 +85,15 @@ class DataStore:
         track = list(self.store.keys())[0]
         # FIXME: temporary solution to retrieving the coordinates
         self._store_coords = self.store[track].coords
-        sample_sets = None
-        self.sample_set_names = [config.DEFAULT_SAMPLE_SET]
-        if sampleinfo is not None:
-            sampleinfo_df = pd.read_table(
-                sampleinfo,
-                header=None,
-                sep=r"\s+",
-                index_col=0,
-                names=["sample", "sample_set"],
-            )
-            samples = self.store[track].coords["sample"].values
-            sample_sets = sampleinfo_df.loc[samples]["sample_set"].values
-            self.sample_set_names.extend(list(set(sample_sets)))
+
+        self._has_sampleinfo = sampleinfo is not None
+        self._user_sample_set_membership = self._parse_sampleinfo(sampleinfo)
+        if self._has_sampleinfo:
+            self._user_sample_set_membership.setflags(write=False)
 
         self.base_coord = Coordinates(
             self,
-            sample_sets=sample_sets,
+            sample_sets=self.sample_set_names,
         )
         self.tracks = {
             name: Track(
@@ -117,6 +109,21 @@ class DataStore:
 
     def __str__(self) -> str:
         return f"DataStore(path={self.path}, datasets={self.tracks})"
+
+    def _parse_sampleinfo(self, sampleinfo) -> npt.NDArray | None:
+        if sampleinfo is None:
+            return None
+        df = pd.read_table(
+            sampleinfo,
+            header=None,
+            sep=r"\s+",
+            index_col=0,
+            names=["sample", "sample_set"],
+        )
+        missing = set(self.samples) - set(df.index)
+        if missing:
+            raise ValueError(f"Samples missing from sampleinfo: {sorted(missing)[:5]}")
+        return df.loc[self.samples, "sample_set"].to_numpy(dtype=str)
 
     @property
     def title(self):
@@ -150,8 +157,45 @@ class DataStore:
         return np.asarray(self._store_coords["offsets"].values)
 
     @functools.cached_property
+    def default_sample_set_name(self) -> str:
+        if self.has_sample_sets and len(set(self.sample_set_membership)) == 1:
+            return str(self.sample_set_membership[0])
+        return config.DEFAULT_SAMPLE_SET
+
+    @functools.cached_property
     def default_sample_set_membership(self) -> npt.NDArray:
-        return np.repeat(config.DEFAULT_SAMPLE_SET, self.n_samples)
+        return np.repeat(self.default_sample_set_name, self.n_samples)
+
+    @functools.cached_property
+    def sample_set_membership(self) -> npt.NDArray:
+        if self._has_sampleinfo:
+            return self._user_sample_set_membership
+        return self.default_sample_set_membership
+
+    @functools.cached_property
+    def sample_set_names(self) -> list:
+        return [self.default_sample_set_name, *self.user_sample_set_names]
+
+    @functools.cached_property
+    def n_sample_sets(self) -> int:
+        return len(self.sample_set_names)
+
+    @functools.cached_property
+    def user_sample_set_names(self) -> list[str]:
+        if not self.has_sample_sets:
+            return []
+        names = np.unique(self.sample_set_membership).tolist()
+        if len(names) == 1:
+            return []
+        return sorted(names)
+
+    @functools.cached_property
+    def n_user_sample_set_names(self) -> int:
+        return len(self.user_sample_set_names)
+
+    @property
+    def has_sample_sets(self) -> bool:
+        return self._has_sampleinfo
 
     @functools.cached_property
     def sample_set_colors(self) -> dict[str, str]:
