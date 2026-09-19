@@ -71,11 +71,10 @@ class Coordinates:
             if contig_mask is None
             else np.asarray(contig_mask, dtype=bool)
         )
-        self._default_sample_set_membership: npt.NDArray = np.repeat(
-            config.DEFAULT_SAMPLE_SET, self._samples_all.size
-        )
         self._sample_set_membership: npt.NDArray = np.asarray(
-            self._default_sample_set_membership if sample_sets is None else sample_sets
+            self._datastore.default_sample_set_membership
+            if sample_sets is None
+            else sample_sets
         )
         user_sample_set_names = (
             [] if sample_sets is None else sorted(list(set(self.sample_set_membership)))
@@ -91,7 +90,6 @@ class Coordinates:
             self._offsets,
             self.sample_mask,
             self.contig_mask,
-            self._default_sample_set_membership,
             self._sample_set_membership,
             self.user_sample_set_names,
             self.sample_set_names,
@@ -141,7 +139,6 @@ class Coordinates:
         new._samples_all = self._samples_all
         new._contigs_all = self._contigs_all
         new._offsets = self._offsets
-        new._default_sample_set_membership = self._default_sample_set_membership
         new._sample_set_membership = self._sample_set_membership
         new.sample_mask = (
             self.sample_mask
@@ -330,7 +327,7 @@ class Coordinates:
 
     @property
     def default_sample_set_membership(self):
-        return (self._default_sample_set_membership[~self.sample_mask],)
+        return self._datastore.default_sample_set_membership[~self.sample_mask]
 
     @property
     def n_sample_sets(self):
@@ -374,7 +371,7 @@ class Coordinates:
     def sample_set_membership_dataframe(self, *, active_only=False) -> pd.DataFrame:
         df = pd.DataFrame(
             {
-                "sample_set": self._default_sample_set_membership,
+                "sample_set": self._datastore.default_sample_set_membership,
                 "active": ~self.sample_mask,
                 "sample": self._samples_all,
             }

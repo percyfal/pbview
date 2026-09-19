@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, override
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import pbzarr
 import xarray as xr
@@ -95,6 +96,8 @@ class DataStore:
             sample_sets = sampleinfo_df.loc[samples]["sample_set"].values
             self.sample_set_names.extend(list(set(sample_sets)))
 
+        self._samples_all = np.asarray(self.store[track].coords["sample"].values)
+
         self.base_coord = Coordinates(
             self,
             samples=self.store[track].sample.values,
@@ -124,6 +127,10 @@ class DataStore:
     @property
     def data(self) -> str:
         return self.store
+
+    @functools.cached_property
+    def default_sample_set_membership(self) -> npt.NDArray:
+        return np.repeat(config.DEFAULT_SAMPLE_SET, self._samples_all.size)
 
     @functools.cached_property
     def sample_set_colors(self) -> dict[str, str]:
