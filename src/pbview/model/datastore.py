@@ -8,6 +8,7 @@ __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
+import functools
 import json
 from collections.abc import Iterable
 from pathlib import Path
@@ -19,11 +20,21 @@ import pbzarr
 import xarray as xr
 import zarr
 
+from pbview import config
 from pbview.logging import app_logger as logger
 from pbview.model.coordinates import Coordinates
 from pbview.model.track import Track
 
 xr.set_options(display_expand_attrs=False)
+
+
+def _to_hex(color):
+    if isinstance(color, str):
+        return color
+    r, g, b = color[:3]
+    if max(r, g, b) <= 1:
+        r, g, b = int(r * 255), int(g * 255), int(b * 255)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 class NpEncoder(json.JSONEncoder):
@@ -71,6 +82,7 @@ class DataStore:
             raise
         track = list(self.store.keys())[0]
         sample_sets = None
+        self.sample_set_names = [config.DEFAULT_SAMPLE_SET]
         if sampleinfo is not None:
             sampleinfo_df = pd.read_table(
                 sampleinfo,
@@ -81,6 +93,7 @@ class DataStore:
             )
             samples = self.store[track].coords["sample"].values
             sample_sets = sampleinfo_df.loc[samples]["sample_set"].values
+            self.sample_set_names.extend(list(set(sample_sets)))
 
         self.base_coord = Coordinates.from_datatree(
             self.store[track], sample_sets=sample_sets
@@ -107,6 +120,31 @@ class DataStore:
     @property
     def data(self) -> str:
         return self.store
+
+    @functools.cached_property
+    def sample_set_colors(self) -> dict[str, str]:
+        import colorcet as cc
+
+        if len(self.sample_set_names) > 8:
+            palette = cc.glasbey_category10
+            return {
+                s: _to_hex(palette[i % len(palette)])
+                for i, s in enumerate(self.sample_set_names)
+            }
+        # Okabe-Ito palette
+        palette = [
+            "#E69F00",
+            "#56B4E9",
+            "#009E73",
+            "#F0E442",
+            "#0072B2",
+            "#D55E00",
+            "#CC79A7",
+            "#000000",
+        ]
+        return {
+            s: palette[i % len(palette)] for i, s in enumerate(self.sample_set_names)
+        }
 
     def summary(self) -> None:
         return {
