@@ -268,6 +268,14 @@ class Coordinates:
         )
 
     @property
+    def contig_mask(self):
+        return self._contig_mask
+
+    @property
+    def sample_mask(self):
+        return self._sample_mask
+
+    @property
     def contigs(self):
         return self.contigs_all[~self._contig_mask]
 
