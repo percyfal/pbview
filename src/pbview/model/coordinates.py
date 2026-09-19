@@ -48,13 +48,11 @@ class Coordinates:
         self,
         datastore: DataStore,
         *,
-        offsets: npt.ArrayLike | xr.DataArray,
         sample_sets: npt.ArrayLike | None = None,
         sample_mask: npt.NDArray[np.bool_] | None = None,
         contig_mask: npt.NDArray[np.bool_] | None = None,
     ) -> None:
         self._datastore = datastore
-        self._offsets: npt.NDArray[np.int64] = np.asarray(offsets, dtype=np.int64)
         # Masks: True = hidden. Default = keep everything
         n_samples_all, n_contigs_all = self.n_samples_all, self.n_contigs_all
         self.sample_mask: npt.NDArray[np.bool_] = (
@@ -81,7 +79,6 @@ class Coordinates:
         )
         # Freeze the underlying arrays to catch accidental mutation.
         for arr in (
-            self._offsets,
             self.sample_mask,
             self.contig_mask,
             self._sample_set_membership,
@@ -114,7 +111,7 @@ class Coordinates:
             (
                 id(self.samples_all),
                 id(self.contigs_all),
-                id(self._offsets),
+                id(self.offsets),
                 self.sample_mask.tobytes(),
                 self.contig_mask.tobytes(),
             )
@@ -130,7 +127,6 @@ class Coordinates:
         new = self.__class__.__new__(self.__class__)
 
         new._datastore = self._datastore
-        new._offsets = self._offsets
         new._sample_set_membership = self._sample_set_membership
         new.sample_mask = (
             self.sample_mask
@@ -258,9 +254,14 @@ class Coordinates:
     def n_contigs_all(self) -> int:
         return self._datastore.n_contigs
 
+    @property
+    def offsets(self) -> npt.NDArray:
+        """Contig offsets"""
+        return self._datastore.offsets
+
     @cached_property
     def _contig_len_all(self) -> npt.NDArray[np.uint32]:
-        return np.diff(self._offsets).astype(np.uint32)
+        return np.diff(self.offsets).astype(np.uint32)
 
     @property
     def contig_len_all(self):
@@ -292,8 +293,8 @@ class Coordinates:
         return (
             pr.PyRanges(
                 {
-                    "Start": self._offsets[:-1][self.contig_indices],
-                    "End": self._offsets[1:][self.contig_indices],
+                    "Start": self.offsets[:-1][self.contig_indices],
+                    "End": self.offsets[1:][self.contig_indices],
                     "Chromosome": "Placeholder",
                 }
             )

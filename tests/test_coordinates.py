@@ -38,11 +38,9 @@ def sample_sets(request):
 @pytest.fixture
 def coordinates(coordinate_args, sample_sets):
     ds, param = coordinate_args
-    track = list(ds.store.keys())[0]
     return Coordinates(
         datastore=ds,
         sample_sets=sample_sets,
-        offsets=ds.store[track].offsets.values,
     ), param
 
 

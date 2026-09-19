@@ -43,7 +43,7 @@ def compute_track_sum(track: Track, base_coord: Coordinates) -> xr.Dataset:
     ds_out = xr.Dataset(
         data_vars={"values": data.chunk({"sample_set": -1, "position": 1_000_000})},
         coords={
-            "offsets": base_coord._offsets,
+            "offsets": base_coord.offsets,
             "contigs": base_coord.contigs_all,
             "sample_set": base_coord.sample_set_names,
         },
@@ -81,7 +81,7 @@ def compute_track_missingness(
     ds_out = xr.Dataset(
         data_vars={"values": data.chunk({"sample_set": -1, "position": 1_000_000})},
         coords={
-            "offsets": base_coord._offsets,
+            "offsets": base_coord.offsets,
             "contigs": base_coord.contigs_all,
             "sample_set": base_coord.sample_set_names,
         },
