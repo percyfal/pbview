@@ -34,13 +34,13 @@ def ds(store, sampleinfo, sample_sets):
 
 @pytest.fixture
 def coordinate_args(ds):
-    return ds, None
+    return ds
 
 
 @pytest.fixture
 def coordinates(coordinate_args):
-    ds, param = coordinate_args
-    return Coordinates(datastore=ds), param
+    ds = coordinate_args
+    return Coordinates(datastore=ds)
 
 
 @pytest.fixture
@@ -67,14 +67,14 @@ def expected_sample_set_membership_size(sample_sets):
 
 
 def test_with_length_filter(coordinates):
-    coord, _ = coordinates
+    coord = coordinates
     assert coord.with_length_filter(lower=850_000).n_contigs == 2
     assert coord.with_length_filter(lower=850_000, upper=950_000).n_contigs == 1
     assert coord.with_length_filter(upper=950_000).n_contigs == 2
 
 
 def test_with_contigs(coordinates):
-    coord, _ = coordinates
+    coord = coordinates
     assert coord.with_contigs(["chr1", "chr3"]).n_contigs == 2
     assert coord.with_contigs(["chr2"]).n_contigs == 1
     assert coord.with_contigs(["chr4"]).n_contigs == 0
@@ -82,7 +82,7 @@ def test_with_contigs(coordinates):
 
 
 def test_with_contigs_and_length_filters(coordinates):
-    coord, _ = coordinates
+    coord = coordinates
     assert coord.with_contigs(["chr1"]).with_length_filter(lower=850_000).n_contigs == 1
     assert (
         coord.with_contigs(["chr1", "chr2"]).with_length_filter(lower=950_000).n_contigs
@@ -91,7 +91,7 @@ def test_with_contigs_and_length_filters(coordinates):
 
 
 def test_with_samples(coordinates, expected_sample_set_membership_size):
-    coord, _ = coordinates
+    coord = coordinates
     assert coord.with_samples(["s1", "s2"]).n_samples == 2
     assert coord.with_samples(["s1", "s8"]).n_samples == 1
     assert coord.with_samples(["s8"]).n_samples == 0
@@ -99,7 +99,7 @@ def test_with_samples(coordinates, expected_sample_set_membership_size):
 
 
 def test_with_sample_sets(coordinates, expected_sample_set_membership_size):
-    coord, _ = coordinates
+    coord = coordinates
     assert (
         coord.with_sample_sets(sample_sets=["pop1"]).n_user_sample_sets
         == expected_sample_set_membership_size.n_user_sample_sets_pop1
@@ -127,7 +127,7 @@ def test_with_sample_sets(coordinates, expected_sample_set_membership_size):
 
 
 def test_with_samples_and_sample_sets(coordinates, expected_sample_set_membership_size):
-    coord, _ = coordinates
+    coord = coordinates
     assert (
         coord.with_samples(["s1", "s2"])
         .with_sample_sets(sample_sets=["pop2"])
@@ -143,7 +143,7 @@ def test_with_samples_and_sample_sets(coordinates, expected_sample_set_membershi
 
 
 def test_contig_slices(coordinates):
-    coord, _ = coordinates
+    coord = coordinates
     filtered_coord = coord.with_contigs(["chr1", "chr2"])
     assert len(filtered_coord.contig_slices()) == 1
     assert filtered_coord.contig_slices()[0][0] == 0
@@ -157,7 +157,7 @@ def test_contig_slices(coordinates):
 
 
 def test_reset(coordinates):
-    coord, _ = coordinates
+    coord = coordinates
     filtered_coord = coord.with_length_filter(lower=850_000).with_samples(["s1", "s2"])
     assert filtered_coord.n_contigs == 2
     assert filtered_coord.n_samples == 2
@@ -167,7 +167,7 @@ def test_reset(coordinates):
 
 
 def test_base_coord(coordinates):
-    coord, _ = coordinates
+    coord = coordinates
     filtered_coord = coord.with_length_filter(lower=850_000).with_samples(["s1", "s2"])
     assert filtered_coord.n_contigs == 2
     assert filtered_coord.n_samples == 2
@@ -176,7 +176,7 @@ def test_base_coord(coordinates):
 
 
 def test_as_pyranges(coordinates):
-    coord, _ = coordinates
+    coord = coordinates
     filtered_coord = coord.with_length_filter(lower=850_000).with_samples(["s1", "s2"])
     pr1 = coord.as_pyranges()
     pr2 = filtered_coord.as_pyranges()
@@ -184,3 +184,13 @@ def test_as_pyranges(coordinates):
     assert len(pr1.chromosomes) == 3
     assert len(pr2.chromosomes) == 2
     assert len(pr3.chromosomes) == 3
+
+
+# FIXME: add cache hit test
+def test_coordinates_cache_hit(coordinates, request):
+    coord = coordinates
+    assert hash(coord) == hash(coord)
+    assert hash(coord.with_sample_sets(["pop1"])) == hash(
+        coord.with_sample_sets(["pop1"])
+    )
+    assert hash(coord) != hash(coord.with_sample_sets(["pop1"]))

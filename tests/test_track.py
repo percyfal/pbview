@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 from pbview.model.datastore import DataStore
-from pbview.model.histogram import compute_threshold_defaults
 
 
 @pytest.fixture()
@@ -122,7 +121,3 @@ def test_optimal_chunking(track):
     assert cs["sample"] == -1
     cs = track._optimal_chunks("position")
     assert cs["position"] == -1
-
-
-def test_coverage_hist_stats(ds):
-    print(compute_threshold_defaults(ds, "depth"))

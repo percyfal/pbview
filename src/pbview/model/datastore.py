@@ -9,6 +9,7 @@ __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
 import functools
+import hashlib
 import json
 from collections.abc import Iterable
 from pathlib import Path
@@ -72,9 +73,9 @@ class NpEncoder(json.JSONEncoder):
 
 class DataStore:
     def __init__(self, path: Path | str, sampleinfo: Path | str | None = None):
-        self.path = Path(path)
+        self._path = Path(path)
         try:
-            self.store = pbzarr.open(self.path)
+            self.store = pbzarr.open(self._path)
         except zarr.errors.GroupNotFoundError as e:
             logger.error("Error opening pbzarr store: %s", e)
             raise
@@ -102,10 +103,10 @@ class DataStore:
         }
 
     def __repr__(self) -> str:
-        return f"<DataStore(path={self.path}, tracks={self.tracks})>"
+        return f"<DataStore(path={self._path}, tracks={self.tracks}, id={self.id[:8]})>"
 
     def __str__(self) -> str:
-        return f"DataStore(path={self.path}, datasets={self.tracks})"
+        return f"DataStore(path={self._path}, datasets={self.tracks}, id={self.id[:8]})"
 
     def _parse_sampleinfo(self, sampleinfo) -> npt.NDArray | None:
         if sampleinfo is None:
@@ -122,9 +123,33 @@ class DataStore:
             raise ValueError(f"Samples missing from sampleinfo: {sorted(missing)[:5]}")
         return df.loc[self.samples, "sample_set"].to_numpy(dtype=str)
 
+    @functools.cached_property
+    def id(self) -> str:
+        p = Path(self._path).resolve()
+        marker = p / ".zgroup" if (p / ".zgroup").exists() else p / "zarr.json"
+        stat = marker.stat()
+
+        payload = "|".join(
+            [
+                f"v{config.SCHEMA_VERSION}",
+                str(p),
+                str(stat.st_mtime_ns),
+                self._sampleinfo_hash(),  # None or hash of sampleinfo content
+            ]
+        ).encode()
+        return hashlib.blake2b(payload, digest_size=16).hexdigest()
+
+    def _sampleinfo_hash(self) -> str:
+        if not self._has_sampleinfo:
+            return "no-sampleinfo"
+        return hashlib.blake2b(
+            self._user_sample_set_membership.tobytes(),
+            digest_size=8,
+        ).hexdigest()
+
     @property
     def title(self):
-        return self.path
+        return self._path
 
     @property
     def data(self) -> str:
@@ -221,6 +246,6 @@ class DataStore:
 
     def summary(self) -> None:
         return {
-            "path": str(self.path),
+            "path": str(self._path),
             "tracks": self.tracks,
         }

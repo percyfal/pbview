@@ -189,14 +189,6 @@ class Track:
         """
         return self._coverage_hist_cached(tuple(bins.tolist()), coord)
 
-    def coverage_hist_stats(
-        self,
-        bins: npt.NDArray[int],
-        coord: Coordinates,
-    ):
-        """Calculate statistics from histogram data"""
-        hist, bins = self.coverage_hist(bins, coord)
-
     @lru_cache(maxsize=64)
     def _missingness_hist_cached(
         self, bins: npt.NDArray, coord: Coordinates, threshold: int
