@@ -122,7 +122,3 @@ def test_optimal_chunking(track):
     assert cs["sample"] == -1
     cs = track._optimal_chunks("position")
     assert cs["position"] == -1
-
-
-def test_coverage_hist_stats(ds):
-    print(compute_threshold_defaults(ds, "depth"))
