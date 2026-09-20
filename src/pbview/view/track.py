@@ -172,11 +172,6 @@ class TrackView(Viewer, param.ParameterizedABC):
         pass
 
 
-class TrackSummaryView(TrackView):
-    def __panel__(self):
-        return pn.Column("# Track summary", self.track.summary(self.state.coord))
-
-
 class _TrackPlotView(TrackView, param.ParameterizedABC):
     """Generic TrackPlotView class"""
 
