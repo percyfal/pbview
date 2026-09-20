@@ -91,6 +91,7 @@ class Coordinates:
     def __hash__(self) -> int:
         return hash(
             (
+                self._datastore.id,
                 id(self.samples_all),
                 id(self.contigs_all),
                 id(self.offsets),

@@ -40,7 +40,7 @@ def test_generic_zarr_store(zarr_group):
 def test_datastore(store):
     ds = DataStore(path=store)
     assert isinstance(ds, DataStore)
-    assert ds.path == Path(store)
+    assert ds._path == Path(store)
     assert isinstance(ds.tracks, dict)
     assert len(ds.tracks) > 0
     for track_name, track in ds.tracks.items():
