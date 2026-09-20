@@ -141,9 +141,19 @@ def make_selection_state_class(
     sample_sets = base_coord.sample_set_names
     for s in sample_sets:
         key = f"lower_coverage_{s}"
-        params[key] = param.Integer(default=defaults[key], bounds=(0, None))
+        params[key] = param.Integer(
+            default=defaults[key],
+            bounds=(0, None),
+            label=f"Lower total coverage {s}",
+            doc="Lower total coverage cutoff",
+        )
         key = f"upper_coverage_{s}"
-        params[key] = param.Integer(default=defaults[key], bounds=(0, None))
+        params[key] = param.Integer(
+            default=defaults[key],
+            bounds=(0, None),
+            label=f"Upper total coverage {s}",
+            doc="Upper total coverage cutoff",
+        )
         params[f"missingness_{s}"] = param.Integer(
             default=int(base_coord.with_sample_sets([s]).n_samples / 2),
             bounds=(

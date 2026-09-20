@@ -51,6 +51,29 @@ def hist_stats(hist, values=None) -> dict:
     )
 
 
+def hist_boxplot_stats(hist, values=None) -> dict:
+    hist = np.asarray(hist)
+    if values is None:
+        values = np.arange(len(hist))
+    n = hist.sum()
+    if n == 0:
+        return {k: np.nan for k in ["min", "q1", "median", "q3", "max"]}
+
+    cum = np.cumsum(hist)
+
+    def q(p):
+        return values[np.searchsorted(cum, p * n)]
+
+    nz = np.flatnonzero(hist)
+    return {
+        "min": values[nz[0]],
+        "q1": q(0.25),
+        "median": q(0.50),
+        "q3": q(0.75),
+        "max": values[nz[-1]],
+    }
+
+
 def hist_quantile(hist, q, values=None):
     """Quantile(s) from histogram counts.
 
