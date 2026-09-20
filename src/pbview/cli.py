@@ -35,8 +35,6 @@ def summarize(
     """
     pbzstore = DataStore(path)
     logger.info(pbzstore)
-    # track = pbzstore.tracks[trackname]
-    # tv = TrackView(track)
 
 
 def import_d4(

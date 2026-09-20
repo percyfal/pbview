@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 from pbview.model.datastore import DataStore
-from pbview.model.histogram import compute_threshold_defaults
 
 
 @pytest.fixture()
