@@ -96,7 +96,7 @@ def preprocess(
     progress: bool = True,
     chunk_size: int = 1_000_000,
     sampleinfo: Path | str | None = None,
-    missingness_threshold: int = 3,
+    missing_cutoff: int = 3,
 ) -> None:
     """Preprocess the pbzarr store for faster access.
 
@@ -109,14 +109,12 @@ def preprocess(
         ds_sum.to_zarr(path, group=f"{track}_sum", mode="w")
 
     ds_miss = compute_track_missingness(
-        track=ds.tracks[track],
-        base_coord=ds.base_coord,
-        threshold=missingness_threshold,
+        track=ds.tracks[track], base_coord=ds.base_coord, missing_cutoff=missing_cutoff
     )
     logger.info("Writing track missingness to pbzarr store at %s", path)
     with ProgressBar():
         ds_miss.to_zarr(
             path,
-            group=f"{track}_missingness_threshold={missingness_threshold}",
+            group=f"{track}_missing_cutoff={missing_cutoff}",
             mode="w",
         )

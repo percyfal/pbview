@@ -129,7 +129,7 @@ class TrackIndicatorCoverageTable(TrackIndicatorTableBase):
 class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
     right = {"text_align": "right"}
     formatters = {
-        "missingness_by_sample": NumberFormatter(format="0.0%", **right),
+        "max_missing_samples_by_sample": NumberFormatter(format="0.0%", **right),
         "frac_active_genome": NumberFormatter(format="0.0%", **right),
         "frac_full_genome": NumberFormatter(format="0.0%", **right),
     }
@@ -138,7 +138,7 @@ class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
     def _extra_deps(self, **params):
         retval = []
         for s in self.hist_rxs:
-            retval.append(self.state.param[f"missingness_{s}"])
+            retval.append(self.state.param[f"max_missing_samples_{s}"])
         return retval
 
     def _build_df(self, *args):
@@ -150,14 +150,14 @@ class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
         rows = []
         for i, s in enumerate(self.hist_rxs):
             counts, bins = hists[i]
-            missingness = miss[i]
-            mask = bins <= missingness
+            max_missing_samples = miss[i]
+            mask = bins <= max_missing_samples
             accessible = int(counts[mask].sum())
             rows.append(
                 {
                     "sample_set": s,
-                    "missingness": missingness,
-                    "missingness_by_sample": missingness
+                    "max_missing_samples": max_missing_samples,
+                    "max_missing_samples_by_sample": max_missing_samples
                     / coord.with_sample_sets([s]).n_samples,
                     "accessible_bp": accessible,
                     "frac_active_genome": accessible / coord.genome_size,
@@ -226,21 +226,21 @@ class TrackMissingnessView(_TrackPlotView):
     def __init__(self, hist_rx, **params):
         super().__init__(**params)
         self._hist_rx = hist_rx
-        missingness = self.state.param[f"missingness_{self.sample_set}"]
+        max_missing_samples = self.state.param[f"max_missing_samples_{self.sample_set}"]
         self.maxbins = self.state.coord.n_samples
 
-        self.plot = pn.bind(self._plot, self._hist_rx, missingness)
+        self.plot = pn.bind(self._plot, self._hist_rx, max_missing_samples)
 
-    def _plot(self, hist_data, missingness):
+    def _plot(self, hist_data, max_missing_samples):
         counts, bins = hist_data
         df = pd.DataFrame({"missingness": bins, "count": counts})
         scatter = df.hvplot.scatter(x="missingness", y="count").opts(shared_axes=False)
-        band = hv.VSpan(0, missingness).opts(color="grey", alpha=0.2)
+        band = hv.VSpan(0, max_missing_samples).opts(color="grey", alpha=0.2)
         return (scatter * band).opts(shared_axes=False)
 
     def __panel__(self):
         return pn.Column(
-            pn.Row(self.state.param[f"missingness_{self.sample_set}"]),
+            pn.Row(self.state.param[f"max_missing_samples_{self.sample_set}"]),
             self.plot,
         )
 
@@ -252,7 +252,6 @@ class TrackCoveragePage(Viewer):
     Container and viewer for multiple TrackCoverageView instances.
     """
 
-    # FIXME: add parameter to toggle sample-based and total coverages
     track = param.ClassSelector(class_=Track, is_instance=True)
     state = param.ClassSelector(class_=SelectionStateBase, is_instance=True)
     active_sets = param.ListSelector(default=[], objects=[])  # populated in __init__
@@ -340,12 +339,6 @@ class TrackCoveragePage(Viewer):
 
 
 class TrackMissingnessPage(Viewer):
-    # FIXME: only allow precomputed values
-    missingness_threshold = param.Integer(
-        default=3,
-        bounds=(0, None),
-        doc="Minimum coverage to consider an individual sample site as accessible",
-    )
     track = param.ClassSelector(class_=Track, is_instance=True)
     state = param.ClassSelector(class_=SelectionStateBase, is_instance=True)
     active_sets = param.ListSelector(default=[], objects=[])  # populated in __init__
@@ -355,10 +348,9 @@ class TrackMissingnessPage(Viewer):
         self.param.active_sets.objects = self.state.coord.sample_set_names
         self.active_sets = list(self.state.coord.sample_set_names)
         self.maxbins = self.state.coord.n_samples
-
         self._hist_rx = {
             s: pn.rx(self._compute_hist)(
-                self.state.param.coord, s, self.param.missingness_threshold
+                self.state.param.coord, s, self.state.param.missing_cutoff
             )
             for s in self.state.coord.sample_set_names
         }
@@ -378,9 +370,9 @@ class TrackMissingnessPage(Viewer):
             hist_rxs=self._hist_rx,  # dict of rx
         )
 
-    def _compute_hist(self, coord, sample_set, missingness_threshold):
+    def _compute_hist(self, coord, sample_set, missing_cutoff):
         return self.track.missingness_hist(
-            coord=coord.with_sample_sets([sample_set]), threshold=missingness_threshold
+            coord=coord.with_sample_sets([sample_set]), missing_cutoff=missing_cutoff
         )
 
     def _render_plots(self, active):
@@ -393,7 +385,7 @@ class TrackMissingnessPage(Viewer):
         )
         plot_grid = pn.bind(self._render_plots, self.param.active_sets)
         return pn.Column(
-            pn.Row(chooser, self.param.missingness_threshold), self._table, plot_grid
+            pn.Row(chooser, self.state.param.missing_cutoff), self._table, plot_grid
         )
 
     @property

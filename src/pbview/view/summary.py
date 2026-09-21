@@ -43,6 +43,23 @@ class SummaryPage(pn.viewable.Viewer):
         self._refresh()
         self._figure = self._make_figure()
         self._pane = pn.pane.Bokeh(self._figure)
+        self._export_btn = pn.widgets.FileDownload(
+            label="Export thresholds",
+            filename="thresholds.yml",
+            callback=self._export_callback,
+            button_type="primary",
+        )
+
+    def _export_callback(self):
+        from io import StringIO
+
+        from ..model.thresholds import profile_from_state
+
+        profile = profile_from_state(
+            self.state,
+            datastore_id=self.state.datastore.id,
+        )
+        return StringIO(profile.to_yaml())
 
     def _make_figure(self):
         hover = HoverTool(
@@ -132,6 +149,7 @@ class SummaryPage(pn.viewable.Viewer):
     def __panel__(self):
         return pn.Column(
             "# Summary",
+            self._export_btn,
             "## Contig summary",
             self._pane,
             "## Coverage",

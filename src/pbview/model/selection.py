@@ -29,11 +29,11 @@ class SelectionStateBase(param.Parameterized):
     upper = param.Number(
         default=float("inf"), doc="Maximum contig length (inf = no limit)"
     )
-    lower_coverage = param.Integer(default=0, bounds=(0, None), doc="Minimum coverage")
-    upper_coverage = param.Integer(
-        default=100, doc="Maximum coverage", bounds=(0, None)
+    missing_cutoff = param.Selector(
+        default=None,
+        doc="An sample site is considered missing if the coverage <= this value",
     )
-    missingness = param.Integer(default=0, doc="Maximum missingness")
+
     samples = param.ListSelector(default=[], objects=[])
     contigs = param.ListSelector(default=[], objects=[])
 
@@ -51,8 +51,8 @@ class SelectionStateBase(param.Parameterized):
         self.samples = list(datastore.samples)
         self.param.contigs.objects = list(datastore.contigs)
         self.contigs = list(datastore.contigs)
-        self.param.missingness.bounds = (0, self.coord.n_samples_all)
-
+        self.param.missing_cutoff.objects = datastore.missing_cutoffs
+        self.missing_cutoff = datastore.missing_cutoffs[0]
         tracks = list(datastore.tracks.keys())
         self.param.active_track.objects = tracks
         self.active_track = active_track if active_track in tracks else tracks[0]
@@ -154,11 +154,15 @@ def make_selection_state_class(
             label=f"Upper total coverage {s}",
             doc="Upper total coverage cutoff",
         )
-        params[f"missingness_{s}"] = param.Integer(
+        params[f"max_missing_samples_{s}"] = param.Integer(
             default=int(base_coord.with_sample_sets([s]).n_samples / 2),
             bounds=(
                 0,
                 base_coord.with_sample_sets([s]).n_samples,
+            ),
+            doc=(
+                "A site with >= max_missing_samples is inaccessible and therefore "
+                "masked. The threshold applies at the sample set level"
             ),
         )
 

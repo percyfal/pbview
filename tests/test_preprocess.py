@@ -31,6 +31,6 @@ def test_compute_track_missingness(track, coord):
     ds = compute_track_missingness(track, coord)
     assert np.array_equal(ds["values"].values[0, :], np.array([7, 3, 2, 2]))
     assert np.array_equal(ds["values"].values[-1, :], np.array([0, 0, 0, 0]))
-    ds = compute_track_missingness(track, coord, threshold=12)
+    ds = compute_track_missingness(track, coord, missing_cutoff=12)
     assert np.array_equal(ds["values"].values[0, :], np.array([7, 3, 2, 2]))
     assert np.array_equal(ds["values"].values[-1, :], np.array([2, 1, 0, 1]))
