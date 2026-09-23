@@ -1,6 +1,16 @@
 from contextlib import contextmanager
 
+import dask
 from dask.distributed import Client, LocalCluster
+
+
+def set_dask_workers(workers=2, threads=2, memory_limit="2GB"):
+    dask.config.set(
+        scheduler="threads",
+        num_workers=workers,
+        threads_per_worker=threads,
+        memory_limit=memory_limit,
+    )
 
 
 class DaskClient:

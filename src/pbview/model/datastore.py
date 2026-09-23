@@ -221,9 +221,9 @@ class DataStore:
 
     @functools.cached_property
     def sample_set_colors(self) -> dict[str, str]:
-        import colorcet as cc
+        if self.n_sample_sets > 8:
+            import colorcet as cc
 
-        if len(self.sample_set_names) > 8:
             palette = cc.glasbey_category10
             return {
                 s: _to_hex(palette[i % len(palette)])

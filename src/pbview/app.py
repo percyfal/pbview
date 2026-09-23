@@ -18,6 +18,7 @@ from dask.distributed import Client, LocalCluster
 from panel.viewable import Viewer
 
 from pbview import config
+from pbview.cluster import set_dask_workers
 from pbview.logging import app_logger as logger
 from pbview.model.datastore import DataStore
 from pbview.view.datastore import DataStoreView
@@ -78,6 +79,9 @@ def serve(servable, **kw):
     if kw.pop("use_dask", False):
         _ = _init_dask(**kwargs)
     else:
+        set_dask_workers(
+            workers=kwargs["n_workers"], threads=kwargs["threads_per_worker"]
+        )
         dask.config.set(scheduler="threads", num_workers=kwargs["n_workers"])
     logger.info("Serving main app")
 
