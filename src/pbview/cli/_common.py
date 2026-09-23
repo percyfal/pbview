@@ -1,7 +1,10 @@
 import multiprocessing  # noqa
 from typing import Callable, Mapping  # noqa
 
+import sys
 import click
+import dask
+import functools
 from click.decorators import FC
 
 from pbview.logging import app_logger as logger  # noqa
@@ -77,6 +80,12 @@ def workers_option(default: int = 1) -> Callable[[FC], FC]:
         default=default,
         help="Number of workers to use for pre-processing",
         type=click.IntRange(1, multiprocessing.cpu_count()),
+    )
+
+
+def memory_limit_option(default: str = "4GB") -> Callable[[FC], FC]:
+    return click.option(
+        "--memory-limit", default=default, help="Memory limit per worker", type=str
     )
 
 
@@ -160,3 +169,34 @@ def track_name_option(default: str = "depth") -> Callable[[FC], FC]:
     return click.option(
         "-t", "--track-name", default=default, help="Set track name for import"
     )
+
+
+def set_threads(func):
+    @functools.wraps(func)
+    def wrapper(**kwargs):
+        threads = kwargs.pop("threads", 2)
+        workers = kwargs.pop("workers", 1)
+        memory_limit = kwargs.pop("memory_limit", "4GB")
+        use_dask = kwargs.pop("use_dask", False)
+        if use_dask:
+            logger.error(
+                "Dask is not supported for console. "
+                "Please use the --no-use-dask option."
+            )
+            sys.exit(1)
+        else:
+            logger.info(
+                "Setting threads to %d, workers to %d, memory limit to %s",
+                threads,
+                workers,
+                memory_limit,
+            )
+            dask.config.set(
+                scheduler="threads",
+                num_workers=workers,
+                threads_per_worker=threads,
+                memory_limit=memory_limit,
+            )
+        return func(**kwargs)
+
+    return wrapper
