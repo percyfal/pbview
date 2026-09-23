@@ -108,12 +108,12 @@ def test_coverage_hist(track, coord):
 
 def test_missingness_hist(track, coord):
     bins = np.arange(0, 11)
-    data, _ = track.missingness_hist(coord=coord, threshold=0)
+    data, _ = track.missingness_hist(coord=coord, missing_cutoff=0)
     assert data[-1] == 98944
-    data, _ = track.missingness_hist(coord=coord, threshold=2)
+    data, _ = track.missingness_hist(coord=coord, missing_cutoff=2)
     assert data[-1] == 146622
-    data, _ = track.missingness_hist(coord=coord, threshold=10)
-    data, bins = track.missingness_hist(coord=coord, threshold=10)
+    data, _ = track.missingness_hist(coord=coord, missing_cutoff=10)
+    data, bins = track.missingness_hist(coord=coord, missing_cutoff=10)
 
 
 def test_optimal_chunking(track):

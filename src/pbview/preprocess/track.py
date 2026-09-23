@@ -52,7 +52,7 @@ def compute_track_sum(track: Track, base_coord: Coordinates) -> xr.Dataset:
 
 
 def compute_track_missingness(
-    track: Track, base_coord: Coordinates, threshold: int = 3
+    track: Track, base_coord: Coordinates, missing_cutoff: int = 3
 ):
     """
     Compute track missingness across sample sets.
@@ -60,14 +60,18 @@ def compute_track_missingness(
     Args:
         track: The input track data.
         base_coord: Base coordinate selection.
-        threshold: A site with <= threshold coverage is assigned missing status.
+        missing_cutoff: A site with <= missing_cutoff coverage is
+            assigned missing status.
     Returns:
         Dataset containing the computed sums for each sample set.
     """
     logger.info(f"Computing missingness for {base_coord.n_sample_sets} sample sets")
     data = xr.concat(
         [
-            (track.data(base_coord.with_sample_sets([name]))["values"] <= threshold)
+            (
+                track.data(base_coord.with_sample_sets([name]))["values"]
+                <= missing_cutoff
+            )
             .astype(np.int32)
             .sum("sample")
             for name in base_coord.sample_set_names

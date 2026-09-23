@@ -83,9 +83,9 @@ class DataStore:
             logger.error("Error opening pbzarr store: %s", e)
             raise
         # FIXME: The coordinates will later on live in the root group
-        track = list(self.store.keys())[0]
+        self._active_track = list(self.store.keys())[0]
         # FIXME: temporary solution to retrieving the coordinates
-        self._store_coords = self.store[track].coords
+        self._store_coords = self.store[self._active_track].coords
 
         self._has_sampleinfo = sampleinfo is not None
         self._user_sample_set_membership = self._parse_sampleinfo(sampleinfo)
@@ -243,6 +243,16 @@ class DataStore:
         return {
             s: palette[i % len(palette)] for i, s in enumerate(self.sample_set_names)
         }
+
+    @functools.cached_property
+    def missing_cutoffs(self) -> list[int]:
+        # FIXME(pbzarr>0.6): PrecomputedTracks will live in DataStore
+        return sorted(self._pre.missing_cutoff.keys())
+
+    @property
+    def _pre(self):
+        # FIXME(pbzarr>0.6): remove this shim; use DataStore attribute
+        return self.tracks[self._active_track]._pre
 
     def summary(self) -> None:
         return {

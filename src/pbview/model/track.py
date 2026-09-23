@@ -30,10 +30,11 @@ if TYPE_CHECKING:
     from pbview.model.coordinates import Coordinates
 
 
-_THRESHOLD_RE = re.compile(r"^(?P<base>.+)_missingness_threshold=(?P<t>\d+)$")
+_THRESHOLD_RE = re.compile(r"^(?P<base>.+)_missing_cutoff=(?P<t>\d+)$")
 
 
 class PrecomputedTrack:
+    # FIXME(pbzarr>0.6): PrecomputedTrack will live in DataStore
     """A representation of a precomputed data track."""
 
     def __init__(self, dt: xr.DataTree | None, track_name: str = "depth"):
@@ -42,15 +43,15 @@ class PrecomputedTrack:
         self._id = datatree_id(dt, schema_version=config.SCHEMA_VERSION)
         if dt is None:
             self.sum = None
-            self.missingness = {}
+            self.missing_cutoff = {}
             return
 
         self.sum = dt.get(f"{track_name}_sum")
-        self.missingness = {}
+        self.missing_cutoff = {}
         for key in dt:
             m = _THRESHOLD_RE.match(key)
             if m and m.group("base") == track_name:
-                self.missingness[int(m.group("t"))] = dt[key]
+                self.missing_cutoff[int(m.group("t"))] = dt[key]
 
     @pn.cache
     def _sum_hist_cached(self, dataset_id: str, sample_set: str) -> np.ndarray:
@@ -191,17 +192,20 @@ class Track:
 
     @lru_cache(maxsize=64)
     def _missingness_hist_cached(
-        self, bins: npt.NDArray, coord: Coordinates, threshold: int
+        self, bins: npt.NDArray, coord: Coordinates, missing_cutoff: int
     ):
         logger.info("Calculating missingness histogram for '%s' track", self.name)
         logger.debug("Current selection: %s", coord)
         bins = np.asarray(bins)
         name = coord.matching_sample_set()
 
-        if name is not None and self._pre.missingness.get(threshold) is not None:
+        if (
+            name is not None
+            and self._pre.missing_cutoff.get(missing_cutoff) is not None
+        ):
             counts = (
                 self._select_positions(
-                    self._pre.missingness[threshold]["values"], coord
+                    self._pre.missing_cutoff[missing_cutoff]["values"], coord
                 )
                 .sel(sample_set=name)
                 .data
@@ -209,7 +213,7 @@ class Track:
         else:
             # Raw path
             arr = self._select(self._hist_view, coord)["values"]
-            counts = (arr <= threshold).astype(np.int32).sum("sample").data
+            counts = (arr <= missing_cutoff).astype(np.int32).sum("sample").data
         max_bin = int(bins[-1])
         counts_clipped = da.minimum(counts, max_bin)
         with ProgressBar():
@@ -219,22 +223,24 @@ class Track:
     def missingness_hist(
         self,
         coord: Coordinates,
-        threshold: int = 0,
+        missing_cutoff: int = 0,
     ):
         """Calculate missingness histogram for a given number of bins
         and coordinate state.
 
         The histogram values are calculated as the number of values across all
-        samples greater than threshold.
+        samples greater than missing_cutoff.
 
         Args:
             coord: coordinate state for data selection
-            threshold: threshold value to treat values as missing (default: 0)
+            missing_cutoff: cutoff value to treat values as missing (default: 0)
         Returns:
             Histogram, bins as a numpy arrays
         """
         bins = np.arange(0, coord.n_samples + 1)
-        return self._missingness_hist_cached(tuple(bins.tolist()), coord, threshold)
+        return self._missingness_hist_cached(
+            tuple(bins.tolist()), coord, missing_cutoff
+        )
 
     # FIXME: would it be possible to cheaply calculate the *combined*
     # effect of coverage and missing data filters? This would require

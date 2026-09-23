@@ -335,8 +335,16 @@ class Coordinates:
         return [s for s in present if s != self.default_sample_set_name]
 
     @property
+    def user_sample_set_names_all(self) -> list[str]:
+        return self._datastore.user_sample_set_names
+
+    @property
     def sample_set_names(self) -> list[str]:
         return [self.default_sample_set_name, *self.user_sample_set_names]
+
+    @property
+    def sample_set_names_all(self) -> list[str]:
+        return self._datastore.sample_set_names
 
     @property
     def default_sample_set_name(self) -> str:
