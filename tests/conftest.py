@@ -6,7 +6,8 @@ import panel as pn
 import pytest
 from pytest import fixture
 
-from pbview.cli import import_d4, preprocess
+from pbview.importers import d4 as import_d4
+from pbview.preprocess import preprocess
 
 dirname = Path(os.path.abspath(os.path.dirname(__file__)))
 
@@ -49,8 +50,8 @@ def d4all(d4file) -> list[Path]:
 def store(tmpdir_factory, d4all, sampleinfo):
     p = Path(tmpdir_factory.mktemp("store")) / "datastore.zarr"
     d4all = [str(p) for p in d4all]
-    import_d4.run_import_d4(str(p), d4all)
-    preprocess.run_preprocess(p, sampleinfo=sampleinfo)
+    import_d4.ingest(str(p), d4all)
+    preprocess.preprocess(p, sampleinfo=sampleinfo)
     return p
 
 
