@@ -58,13 +58,17 @@ def test_length_filters(state, args, expected):
         ({"contigs": ["chr1"]}, {"genome_size": 1_000_000, "n_contigs": 1}),
         ({"contigs": ["chr2"]}, {"genome_size": 900_000, "n_contigs": 1}),
         ({"contigs": ["chr1", "chr2"]}, {"genome_size": 1_900_000, "n_contigs": 2}),
-        ({"contigs": ["chr4"]}, {"genome_size": 0, "n_contigs": 0}),
     ],
 )
 def test_contigs_filter(state, args, expected):
     state.contigs = args["contigs"]
     assert state.coord.genome_size == expected["genome_size"]
     assert state.coord.n_contigs == expected["n_contigs"]
+
+
+def test_contigs_filter_unknown_raises(state):
+    with pytest.raises(ValueError):
+        state.contigs = ["chr4"]
 
 
 @pytest.mark.parametrize(

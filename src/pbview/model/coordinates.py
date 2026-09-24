@@ -47,26 +47,26 @@ class Coordinates:
         self,
         datastore: DataStore,
         *,
-        sample_mask: npt.NDArray[np.bool_] | None = None,
-        contig_mask: npt.NDArray[np.bool_] | None = None,
+        sample_selected: npt.NDArray[np.bool_] | None = None,
+        contig_selected: npt.NDArray[np.bool_] | None = None,
     ) -> None:
         self._datastore = datastore
         # Masks: True = hidden. Default = keep everything
         n_samples_all, n_contigs_all = self.n_samples_all, self.n_contigs_all
-        self._sample_mask: npt.NDArray[np.bool_] = (
-            np.zeros(n_samples_all, dtype=bool)
-            if sample_mask is None
-            else np.asarray(sample_mask, dtype=bool)
+        self._sample_selected: npt.NDArray[np.bool_] = (
+            np.ones(n_samples_all, dtype=bool)
+            if sample_selected is None
+            else np.asarray(sample_selected, dtype=bool)
         )
-        self._contig_mask: npt.NDArray[np.bool_] = (
-            np.zeros(n_contigs_all, dtype=bool)
-            if contig_mask is None
-            else np.asarray(contig_mask, dtype=bool)
+        self._contig_selected: npt.NDArray[np.bool_] = (
+            np.ones(n_contigs_all, dtype=bool)
+            if contig_selected is None
+            else np.asarray(contig_selected, dtype=bool)
         )
         # Freeze the underlying arrays to catch accidental mutation.
         for arr in (
-            self._sample_mask,
-            self._contig_mask,
+            self._sample_selected,
+            self._contig_selected,
         ):
             arr.setflags(write=False)
 
@@ -95,33 +95,33 @@ class Coordinates:
                 id(self.samples_all),
                 id(self.contigs_all),
                 id(self.offsets),
-                self._sample_mask.tobytes(),
-                self._contig_mask.tobytes(),
+                self._sample_selected.tobytes(),
+                self._contig_selected.tobytes(),
             )
         )
 
     def _replace(
         self,
         *,
-        sample_mask: npt.NDArray[np.bool_] | None = None,
-        contig_mask: npt.NDArray[np.bool_] | None = None,
+        sample_selected: npt.NDArray[np.bool_] | None = None,
+        contig_selected: npt.NDArray[np.bool_] | None = None,
     ) -> "Coordinates":
         """Return a new instance sharing raw data, with new masks."""
         new = self.__class__.__new__(self.__class__)
 
         new._datastore = self._datastore
-        new._sample_mask = (
-            self._sample_mask
-            if sample_mask is None
-            else np.asarray(sample_mask, dtype=bool)
+        new._sample_selected = (
+            self._sample_selected
+            if sample_selected is None
+            else np.asarray(sample_selected, dtype=bool)
         )
-        new._contig_mask = (
-            self._contig_mask
-            if contig_mask is None
-            else np.asarray(contig_mask, dtype=bool)
+        new._contig_selected = (
+            self._contig_selected
+            if contig_selected is None
+            else np.asarray(contig_selected, dtype=bool)
         )
-        new._sample_mask.setflags(write=False)
-        new._contig_mask.setflags(write=False)
+        new._sample_selected.setflags(write=False)
+        new._contig_selected.setflags(write=False)
         return new
 
     def matching_sample_set(self) -> str | None:
@@ -143,9 +143,9 @@ class Coordinates:
         keep = (
             (self._contig_len_all >= lower)
             & (self._contig_len_all <= upper)
-            & ~self._contig_mask
+            & self.contig_selected
         )
-        return self._replace(contig_mask=~keep)
+        return self._replace(contig_selected=keep)
 
     def with_contigs(
         self,
@@ -153,15 +153,20 @@ class Coordinates:
     ) -> "Coordinates":
         """Keep only listed contigs. `None` resets the contig mask."""
         if contigs is None:
-            return self._replace(contig_mask=np.zeros_like(self._contig_mask))
-        keep = np.isin(self.contigs_all, np.asarray(list(contigs))) & ~self._contig_mask
-        return self._replace(contig_mask=~keep)
+            return self._replace(contig_selected=np.ones_like(self.contig_selected))
+        unknown = set(contigs) - set(self.contigs_all.tolist())
+        if unknown:
+            raise ValueError(f"Unknown contigs: {sorted(unknown)}")
+        keep = (
+            np.isin(self.contigs_all, np.asarray(list(contigs))) & self.contig_selected
+        )
+        return self._replace(contig_selected=keep)
 
     def with_all_contigs(
         self,
         contigs: Iterable[str] | None = None,
     ) -> "Coordinates":
-        return self._replace(contig_mask=np.zeros_like(self._contig_mask))
+        return self._replace(contig_selected=np.ones_like(self.contig_selected))
 
     def with_samples(
         self,
@@ -169,36 +174,40 @@ class Coordinates:
     ) -> "Coordinates":
         """Keep only listed samples. `None` resets the sample mask."""
         if samples is None:
-            return self._replace(sample_mask=np.zeros_like(self._sample_mask))
-        keep = np.isin(self.samples_all, np.asarray(list(samples))) & ~self._sample_mask
-        return self._replace(sample_mask=~keep)
+            return self._replace(sample_selected=np.ones_like(self.sample_selected))
+        keep = (
+            np.isin(self.samples_all, np.asarray(list(samples))) & self.sample_selected
+        )
+        return self._replace(sample_selected=keep)
 
     def with_sample_sets(self, sample_sets: list[str]):
         """Keep only listed sample sets. `None` resets the sample mask."""
         if self.default_sample_set_name in sample_sets:
             return self
         if sample_sets is None:
-            return self._replace(sample_mask=np.zeros_like(self._sample_mask))
-        keep = np.isin(self.sample_set_membership_all, sample_sets) & ~self._sample_mask
-        return self._replace(sample_mask=~keep)
+            return self._replace(sample_selected=np.ones_like(self.sample_selected))
+        keep = (
+            np.isin(self.sample_set_membership_all, sample_sets) & self.sample_selected
+        )
+        return self._replace(sample_selected=keep)
 
     def replace_contigs(self, names):
         mask = np.isin(self.contigs_all, names)
-        return self._with_contig_mask(mask)
+        return self._with_contig_selected(mask)
 
     def reset(self, *, samples: bool = True, contigs: bool = True) -> "Coordinates":
         """Return a new Coordinates with masks reset (nothing hidden)."""
         return self._replace(
-            sample_mask=(np.zeros_like(self._sample_mask) if samples else None),
-            contig_mask=(np.zeros_like(self._contig_mask) if contigs else None),
+            sample_selected=(np.ones_like(self.sample_selected) if samples else None),
+            contig_selected=(np.ones_like(self.contig_selected) if contigs else None),
         )
 
     @property
     def base_coord(self) -> "Coordinates":
         """Return a new Coordinates with no masks (nothing hidden)."""
         return self._replace(
-            sample_mask=np.zeros_like(self._sample_mask),
-            contig_mask=np.zeros_like(self._contig_mask),
+            sample_selected=np.ones_like(self.sample_selected),
+            contig_selected=np.ones_like(self.contig_selected),
         )
 
     @property
@@ -234,11 +243,11 @@ class Coordinates:
 
     @property
     def contig_len(self):
-        return self._contig_len_all[~self._contig_mask]
+        return self._contig_len_all[self.contig_selected]
 
     @property
-    def contig_mask_is_active(self) -> bool:
-        return bool(np.any(self._contig_mask))
+    def contig_selection_is_active(self) -> bool:
+        return bool(np.any(self.contig_selected))
 
     @property
     def contig_idx(self) -> dict:
@@ -249,7 +258,7 @@ class Coordinates:
     @cached_property
     def contig_indices(self) -> npt.NDArray[np.int64]:
         """Original-vector indices of currently selected contigs."""
-        return np.flatnonzero(~self._contig_mask).astype(np.int64)
+        return np.flatnonzero(self.contig_selected).astype(np.int64)
 
     def contig_slices(self) -> list[np.array[int]] | None:
         """Return a list of reduced slices mapped to position coordinates."""
@@ -269,16 +278,24 @@ class Coordinates:
         )
 
     @property
-    def contig_mask(self):
-        return self._contig_mask
+    def contig_selected(self):
+        return self._contig_selected
 
     @property
-    def sample_mask(self):
-        return self._sample_mask
+    def contig_excluded(self):
+        return ~self.contig_selected
+
+    @property
+    def sample_selected(self):
+        return self._sample_selected
+
+    @property
+    def sample_excluded(self):
+        return ~self.sample_selected
 
     @property
     def contigs(self):
-        return self.contigs_all[~self._contig_mask]
+        return self.contigs_all[self.contig_selected]
 
     @property
     def n_contigs(self):
@@ -286,7 +303,8 @@ class Coordinates:
 
     @property
     def samples(self) -> Any:
-        return self.samples_all[~self._sample_mask]
+        """Return selected samples"""
+        return self.samples_all[self.sample_selected]
 
     @property
     def n_samples(self):
@@ -295,7 +313,7 @@ class Coordinates:
     @property
     def sample_set_membership(self):
         """Return sample sets per sample"""
-        return self._datastore.sample_set_membership[~self._sample_mask]
+        return self._datastore.sample_set_membership[self.sample_selected]
 
     @property
     def sample_set_membership_all(self):
@@ -304,7 +322,7 @@ class Coordinates:
 
     @property
     def default_sample_set_membership(self):
-        return self._datastore.default_sample_set_membership[~self._sample_mask]
+        return self._datastore.default_sample_set_membership[self.sample_selected]
 
     @property
     def default_sample_set_membership_all(self):
@@ -330,7 +348,7 @@ class Coordinates:
         """Return user sample set names for the current selection"""
         if not self.has_sample_sets:
             return []
-        selected_members = self.sample_set_membership_all[~self._sample_mask]
+        selected_members = self.sample_set_membership_all[self.sample_selected]
         present = np.unique(selected_members).tolist()
         return [s for s in present if s != self.default_sample_set_name]
 
@@ -379,7 +397,7 @@ class Coordinates:
         df = pd.DataFrame(
             {
                 "sample_set": self.default_sample_set_membership_all,
-                "active": ~self._sample_mask,
+                "active": self.sample_selected,
                 "sample": self.samples_all,
             }
         )
@@ -390,7 +408,7 @@ class Coordinates:
                     pd.DataFrame(
                         {
                             "sample_set": self.sample_set_membership_all,
-                            "active": ~self._sample_mask,
+                            "active": self.sample_selected,
                             "sample": self.samples_all,
                         }
                     ),

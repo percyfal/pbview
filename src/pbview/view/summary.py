@@ -127,7 +127,7 @@ class SummaryPage(pn.viewable.Viewer):
         coord = self.state.coord
         names = coord.contigs_all
         lengths = coord.contig_len_all
-        selected = np.asarray(~coord.contig_mask, dtype=np.int8) / 2 + 0.3
+        selected = np.asarray(coord.contig_selected, dtype=np.int8) / 2 + 0.3
         dflist = []
         for s in coord.sample_set_names:
             means = self.track._pre.contig_mean_coverage(s)

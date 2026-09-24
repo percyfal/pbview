@@ -131,7 +131,7 @@ class Track:
 
     def _select_positions(self, base: xr.DataArray, coord: Coordinates) -> xr.DataArray:
         """Apply a contig/position selection from coord."""
-        if not coord.contig_mask_is_active:
+        if not coord.contig_selection_is_active:
             return base
         if coord.n_contigs == 0:
             return base.sel(position=[])

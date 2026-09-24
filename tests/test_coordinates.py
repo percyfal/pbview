@@ -77,8 +77,13 @@ def test_with_contigs(coordinates):
     coord = coordinates
     assert coord.with_contigs(["chr1", "chr3"]).n_contigs == 2
     assert coord.with_contigs(["chr2"]).n_contigs == 1
-    assert coord.with_contigs(["chr4"]).n_contigs == 0
     assert coord.with_contigs(["chr1"]).with_contigs().n_contigs == 3
+
+
+def test_with_contigs_unknown_raises(coordinates):
+    coord = coordinates
+    with pytest.raises(ValueError):
+        coord.with_contigs(["chr4"])
 
 
 def test_with_contigs_and_length_filters(coordinates):

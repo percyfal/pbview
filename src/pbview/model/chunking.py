@@ -14,7 +14,6 @@ from pbview.config import TARGET_BYTES
 from pbview.logging import cli_logger as logger
 
 
-# FIXME: expose TARGET_BYTES via CLI or environment variable
 # FIXME: add reduce_axis to reduce along a specific axis
 # FIXME: add specific function for chunking along samples vs position
 def optimal_chunks_dask(

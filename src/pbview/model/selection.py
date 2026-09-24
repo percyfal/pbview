@@ -108,7 +108,7 @@ class SelectionStateBase(param.Parameterized):
         df = pd.DataFrame(
             {
                 "sample set": self.coord._default_sample_set_membership,
-                "Active": ~self.coord.sample_mask,
+                "Active": self.coord.sample_selected,
                 "Total": self.coord._samples_all,
             }
         )
@@ -118,7 +118,7 @@ class SelectionStateBase(param.Parameterized):
                 pd.DataFrame(
                     {
                         "sample_sets": self.coord._sample_set_membership,
-                        "Active": ~self.coord.sample_mask,
+                        "Active": self.coord.sample_selected,
                         "Total": self.coord._samples_all,
                     }
                 ),
