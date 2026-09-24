@@ -1,6 +1,4 @@
-"""
-Mask creation for pbzarr stores.
-"""
+"""Accessible sites creation for pbzarr stores."""
 
 __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
@@ -28,7 +26,7 @@ from ._common import (
 
 @click.group()
 def mask() -> None:
-    """Generate and summarize masks"""
+    """Generate and summarize accessible sites"""
     pass
 
 
@@ -63,9 +61,9 @@ def generate(
     progress: bool,
     sampleinfo: str | None = None,
 ) -> None:
-    """Generate masks for the pbzarr store.
+    """Generate accessible sites for the pbzarr store.
 
-    Generate masks for the pbzarr store at PATH based on threshold
+    Generate accessible sites for the pbzarr store at PATH based on threshold
     values in THRESHOLD.
     """
     output = output or Path(path).with_name(f"{Path(path).name}_mask")
