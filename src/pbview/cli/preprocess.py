@@ -7,6 +7,7 @@ from pbview.preprocess import preprocess as preprocess_mod
 
 from ._common import (
     chunk_size_option,
+    memory_limit_option,
     path_argument,
     progress_option,
     sampleinfo_option,
@@ -111,6 +112,7 @@ def preprocess_missingness(
 @path_argument(exists=True, dir_okay=True, nargs=1)
 @workers_option(default=1)
 @threads_option(default=1)
+@memory_limit_option()
 @track_name_option()
 @log_level()
 @progress_option()

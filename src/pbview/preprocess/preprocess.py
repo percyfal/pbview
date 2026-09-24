@@ -60,6 +60,7 @@ def compute_thresholds(
     missing_cutoff: int = 3,
 ) -> None:
     """Compute default thresholds for sum data"""
+    show_progress = ProgressBar() if progress else nullcontext()
     ds = DataStore(path=path, sampleinfo=sampleinfo)
 
     defaults = compute_threshold_defaults(ds, track_name)
@@ -69,41 +70,42 @@ def compute_thresholds(
     # Loop sample sets and for each sum data calculate histogram using
     # the defaults for maxbins
     rows = []
-    for ss in ds.sample_set_names:
-        # FIXME: Add option to choose by sample stats
-        by_sample = False
-        n = coord.with_sample_sets([ss]).n_samples if by_sample else 1
-        maxbins = defaults[f"maxbins_{ss}"]
-        bins = np.arange(maxbins + 1)
+    with show_progress:
+        for ss in ds.sample_set_names:
+            # FIXME: Add option to choose by sample stats
+            by_sample = False
+            n = coord.with_sample_sets([ss]).n_samples if by_sample else 1
+            maxbins = defaults[f"maxbins_{ss}"]
+            bins = np.arange(maxbins + 1)
 
-        counts, bins = track.coverage_hist(
-            bins=bins, coord=coord.with_sample_sets([ss])
-        )
-        lo, up = defaults[f"lower_coverage_{ss}"], defaults[f"upper_coverage_{ss}"]
-        stats = hist_stats(counts, bins)
-        mask = (bins >= lo / n) & (bins <= up / n)
-        accessible = int(counts[mask].sum())
-        rows.append(
-            {
-                "sample_set": ss,
-                "lower": lo,
-                "lower_by_sample": lo / coord.with_sample_sets([ss]).n_samples,
-                "upper": up,
-                "upper_by_sample": up / coord.with_sample_sets([ss]).n_samples,
-                "accessible_bp": accessible,
-                "frac_active_genome": accessible / coord.genome_size,
-                "frac_full_genome": accessible / coord.genome_size_all,
-                "median": stats["median"],
-                "mean": stats["mean"],
-                "60%": stats["mean"] * 0.6,
-                "70%": stats["mean"] * 0.7,
-                "80%": stats["mean"] * 0.8,
-                "90%": stats["mean"] * 0.9,
-                "med + 1std": stats["median"] + stats["std"],
-                "med + 2std": stats["median"] + 2 * stats["std"],
-                "std": stats["std"],
-            }
-        )
-    df = pd.DataFrame(rows)
+            counts, bins = track.coverage_hist(
+                bins=bins, coord=coord.with_sample_sets([ss])
+            )
+            lo, up = defaults[f"lower_coverage_{ss}"], defaults[f"upper_coverage_{ss}"]
+            stats = hist_stats(counts, bins)
+            mask = (bins >= lo / n) & (bins <= up / n)
+            accessible = int(counts[mask].sum())
+            rows.append(
+                {
+                    "sample_set": ss,
+                    "lower": lo,
+                    "lower_by_sample": lo / coord.with_sample_sets([ss]).n_samples,
+                    "upper": up,
+                    "upper_by_sample": up / coord.with_sample_sets([ss]).n_samples,
+                    "accessible_bp": accessible,
+                    "frac_active_genome": accessible / coord.genome_size,
+                    "frac_full_genome": accessible / coord.genome_size_all,
+                    "median": stats["median"],
+                    "mean": stats["mean"],
+                    "60%": stats["mean"] * 0.6,
+                    "70%": stats["mean"] * 0.7,
+                    "80%": stats["mean"] * 0.8,
+                    "90%": stats["mean"] * 0.9,
+                    "med + 1std": stats["median"] + stats["std"],
+                    "med + 2std": stats["median"] + 2 * stats["std"],
+                    "std": stats["std"],
+                }
+            )
+        df = pd.DataFrame(rows)
 
     print(df)
