@@ -27,7 +27,7 @@ from ._common import (
 
 
 @click.group()
-def mask():
+def mask() -> None:
     """Generate and summarize masks"""
     pass
 
