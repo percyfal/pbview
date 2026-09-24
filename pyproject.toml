@@ -95,7 +95,7 @@ pbview = { path = ".", editable = true }
 cmd = "test -d 'store' && echo 'store exists' || pbview import store tests/data/s*.per-base.d4"
 
 [tool.pixi.tasks.preprocess]
-cmd = "test -d 'store/depth_sum' && 'preprocessing done' || pbview preprocess store --sampleinfo tests/data/sampleinfo.tsv"
+cmd = "test -d 'store/depth_sum' && 'preprocessing done' || pbview preprocess all store --sampleinfo tests/data/sampleinfo.tsv"
 depends-on = ["init_store"]
 
 [tool.pixi.tasks.dev]
