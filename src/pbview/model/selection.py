@@ -161,8 +161,8 @@ def make_selection_state_class(
                 base_coord.with_sample_sets([s]).n_samples,
             ),
             doc=(
-                "A site with >= max_missing_samples is inaccessible and therefore "
-                "masked. The threshold applies at the sample set level"
+                "A site with >= max_missing_samples is inaccessible. "
+                "The threshold applies at the sample set level"
             ),
         )
 

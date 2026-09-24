@@ -100,8 +100,8 @@ class TrackIndicatorCoverageTable(TrackIndicatorTableBase):
             counts, bins = hists[i]
             lo, up = thresh[2 * i], thresh[2 * i + 1]
             stats = hist_stats(counts, bins)
-            mask = (bins >= lo / n) & (bins <= up / n)
-            accessible = int(counts[mask].sum())
+            included_coverage = (bins >= lo / n) & (bins <= up / n)
+            accessible = int(counts[included_coverage].sum())
             rows.append(
                 {
                     "sample_set": s,
@@ -151,8 +151,8 @@ class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
         for i, s in enumerate(self.hist_rxs):
             counts, bins = hists[i]
             max_missing_samples = miss[i]
-            mask = bins <= max_missing_samples
-            accessible = int(counts[mask].sum())
+            included_missing = bins <= max_missing_samples
+            accessible = int(counts[included_missing].sum())
             rows.append(
                 {
                     "sample_set": s,

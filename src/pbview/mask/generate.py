@@ -11,13 +11,21 @@ from pbview.model.thresholds import ThresholdProfile
 
 
 def _build_mask_dataset(results, base_coords, thresholds):
-    """Build mask xarray dataset.
+    """Build a dataset of boolean masks over positions.
 
-    results: {sample_set: {"missingness": arr, "coverage": arr, "combined": arr}}
+    A mask here means a boolean array across positions. The polarity
+    of a mask is inferred from the name where
+      - `accessible`      : True = site is included
+      - `excluded_*` : True = site is discarded based on the named
+        criterion
+
+    results: {sample_set: {"excluded_missing": arr, "excluded_coverage": arr,
+                           "accessible": arr}}
     base_coords: dict of coords from the active track
+
     """
     sample_sets = list(results)
-    layers = ["missingness", "coverage", "combined"]
+    layers = ["excluded_missing", "excluded_coverage", "accessible"]
 
     ds = {}
     for layer in layers:
@@ -49,7 +57,7 @@ def _save_mask(dataset: xr.Dataset, output):
     dataset.to_zarr(output, mode="w-", consolidated=True)
 
 
-def generate_masks(
+def generate_mask(
     path: Path | str,
     *,
     threshold: Path | str,
@@ -58,12 +66,14 @@ def generate_masks(
     progress: bool = True,
     sampleinfo: Path | str | None = None,
 ) -> None:
-    """Generate masks for the pbzarr store."""
+    """Generate accessible sites for the pbzarr store."""
     ds = DataStore(path=path, sampleinfo=sampleinfo)
     logger.info(
-        "Creating mask for track %s based on threshold %s", track_name, threshold
+        "Creating accessible sites for track %s based on threshold %s",
+        track_name,
+        threshold,
     )
-    logger.info("Writing mask to pbzarr store at %s", output)
+    logger.info("Writing accessible sites to pbzarr store at %s", output)
     show_progress = ProgressBar() if progress else nullcontext()
 
     track = ds.tracks[track_name]
@@ -73,24 +83,24 @@ def generate_masks(
 
     results = {}
     for ss, thresholds in threshold_data.sample_sets.items():
-        # Calculate coverage mask
+        # Calculate excluded_coverage mask
         sums = track._pre.sum["values"].sel(sample_set=ss)
-        coverage_mask = (sums < thresholds.lower_coverage) | (
+        excluded_coverage = (sums < thresholds.lower_coverage) | (
             sums > thresholds.upper_coverage
         )
 
-        # Calculate missingness mask
+        # Calculate excluded_missing mask
         key = thresholds.missing_cutoff
         miss = track._pre.missing_cutoff[key]["values"].sel(sample_set=ss)
-        missingness_mask = miss > thresholds.max_missing_samples
+        excluded_missing = miss > thresholds.max_missing_samples
 
-        # Combine masks
-        combined_mask = coverage_mask | missingness_mask
+        # Combine exclusion masks and invert for accessible sites
+        accessible = ~(excluded_coverage | excluded_missing)
 
         results[ss] = {
-            "coverage": coverage_mask,
-            "missingness": missingness_mask,
-            "combined": combined_mask,
+            "excluded_coverage": excluded_coverage,
+            "excluded_missing": excluded_missing,
+            "accessible": accessible,
         }
 
     # Write mask to output store

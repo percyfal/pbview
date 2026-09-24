@@ -31,8 +31,9 @@ class Coordinates:
 
     Representation of samples, contigs and contig lengths. Provides
     convenience functions to subset coordinates and to keep track of
-    active masks. Every filter operation returns a *new* `Coordinates`
-    object. The derived quantities are cached per instance.
+    active samples and contigs. Every filter operation returns a *new*
+    `Coordinates` object. The derived quantities are cached per
+    instance.
 
     The full coordinate set is saved in private variables, meaning a
     `Coordinates` object always has access to the full data view.
@@ -51,7 +52,7 @@ class Coordinates:
         contig_selected: npt.NDArray[np.bool_] | None = None,
     ) -> None:
         self._datastore = datastore
-        # Masks: True = hidden. Default = keep everything
+        # Selection arrays: True = selected. Default = keep everything
         n_samples_all, n_contigs_all = self.n_samples_all, self.n_contigs_all
         self._sample_selected: npt.NDArray[np.bool_] = (
             np.ones(n_samples_all, dtype=bool)
@@ -106,7 +107,7 @@ class Coordinates:
         sample_selected: npt.NDArray[np.bool_] | None = None,
         contig_selected: npt.NDArray[np.bool_] | None = None,
     ) -> "Coordinates":
-        """Return a new instance sharing raw data, with new masks."""
+        """Return a new instance sharing raw data, with new selection arrays."""
         new = self.__class__.__new__(self.__class__)
 
         new._datastore = self._datastore
@@ -125,7 +126,8 @@ class Coordinates:
         return new
 
     def matching_sample_set(self) -> str | None:
-        """Return the name of the sample set that matches the current sample mask."""
+        """Return the name of the sample set that matches the current sample
+        selection mask."""
         for name in self.sample_set_names:
             if name == "ALL":
                 members = self.samples_all
@@ -151,7 +153,7 @@ class Coordinates:
         self,
         contigs: Iterable[str] | None = None,
     ) -> "Coordinates":
-        """Keep only listed contigs. `None` resets the contig mask."""
+        """Keep only listed contigs. `None` resets the contig selection mask."""
         if contigs is None:
             return self._replace(contig_selected=np.ones_like(self.contig_selected))
         unknown = set(contigs) - set(self.contigs_all.tolist())
@@ -172,7 +174,7 @@ class Coordinates:
         self,
         samples: Iterable[str] | None = None,
     ) -> "Coordinates":
-        """Keep only listed samples. `None` resets the sample mask."""
+        """Keep only listed samples. `None` resets the sample selected mask."""
         if samples is None:
             return self._replace(sample_selected=np.ones_like(self.sample_selected))
         keep = (
@@ -181,7 +183,7 @@ class Coordinates:
         return self._replace(sample_selected=keep)
 
     def with_sample_sets(self, sample_sets: list[str]):
-        """Keep only listed sample sets. `None` resets the sample mask."""
+        """Keep only listed sample sets. `None` resets the sample selected mask."""
         if self.default_sample_set_name in sample_sets:
             return self
         if sample_sets is None:
@@ -192,11 +194,11 @@ class Coordinates:
         return self._replace(sample_selected=keep)
 
     def replace_contigs(self, names):
-        mask = np.isin(self.contigs_all, names)
-        return self._with_contig_selected(mask)
+        selected_contigs = np.isin(self.contigs_all, names)
+        return self._with_contig_selected(selected_contigs)
 
     def reset(self, *, samples: bool = True, contigs: bool = True) -> "Coordinates":
-        """Return a new Coordinates with masks reset (nothing hidden)."""
+        """Return a new Coordinates with selection masks reset (nothing hidden)."""
         return self._replace(
             sample_selected=(np.ones_like(self.sample_selected) if samples else None),
             contig_selected=(np.ones_like(self.contig_selected) if contigs else None),
@@ -204,7 +206,7 @@ class Coordinates:
 
     @property
     def base_coord(self) -> "Coordinates":
-        """Return a new Coordinates with no masks (nothing hidden)."""
+        """Return a new Coordinates with selection masks on (nothing hidden)."""
         return self._replace(
             sample_selected=np.ones_like(self.sample_selected),
             contig_selected=np.ones_like(self.contig_selected),
@@ -380,7 +382,7 @@ class Coordinates:
 
     @property
     def genome_size_all(self):
-        """Return the total genome size, including masked contigs"""
+        """Return the total genome size, including all contigs"""
         return np.sum(self.contig_len_all, dtype=np.int64)
 
     def as_pyranges(self):
