@@ -74,7 +74,7 @@ def generate(
         sampleinfo=sampleinfo,
         threshold=threshold,
         output=output,
-        track=track_name,
+        track_name=track_name,
         progress=progress,
     )
 

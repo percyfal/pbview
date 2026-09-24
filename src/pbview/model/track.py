@@ -24,7 +24,9 @@ from dask.diagnostics import ProgressBar
 
 from pbview import config
 from pbview.logging import app_logger as logger
-from pbview.model._identity import datatree_id
+
+from ._identity import datatree_id
+from .chunking import optimal_chunks_dask
 
 if TYPE_CHECKING:
     from pbview.model.coordinates import Coordinates
@@ -134,16 +136,9 @@ class Track:
         logger.debug(
             "Calculating optimal chunks for target bytes: %s", self.TARGET_BYTES
         )
-        da = self._data["values"]
-        itemsize = da.dtype.itemsize
-        reduce_len = da.sizes[reduce_along]
-        other_dim = next(d for d in da.dims if d != reduce_along)
-        other_chunk = max(1, self.TARGET_BYTES // (reduce_len * itemsize))
-        other_chunk = min(other_chunk, da.sizes[other_dim])
-        return {
-            reduce_along: -1,
-            other_dim: int(other_chunk),
-        }
+        return optimal_chunks_dask(
+            self._data["values"], reduce_along, self.TARGET_BYTES
+        )
 
     @property
     def _hist_view(self):

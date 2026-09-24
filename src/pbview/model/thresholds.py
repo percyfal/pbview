@@ -51,6 +51,13 @@ class ThresholdProfile:
             sample_sets=sets,
         )
 
+    def to_dict(self) -> dict:
+        return {
+            "schema_version": self.schema_version,
+            "dataset_id": self.dataset_id,
+            "sample_sets": {s: asdict(t) for s, t in self.sample_sets.items()},
+        }
+
     @classmethod
     def read(cls, path: str | Path) -> "ThresholdProfile":
         return cls.from_yaml(Path(path).read_text())

@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from pathlib import Path
 
 from dask.diagnostics import ProgressBar
@@ -11,7 +12,6 @@ from .track import compute_track_missingness, compute_track_sum
 def preprocess(
     path: Path | str,
     track: str = "depth",
-    workers: int = 1,
     progress: bool = True,
     chunk_size: int = 1_000_000,
     sampleinfo: Path | str | None = None,
@@ -24,7 +24,9 @@ def preprocess(
     ds = DataStore(path=path, sampleinfo=sampleinfo)
     ds_sum = compute_track_sum(track=ds.tracks[track], base_coord=ds.base_coord)
     logger.info("Writing track sum to pbzarr store at %s", path)
-    with ProgressBar():
+
+    show_progress = ProgressBar() if progress else nullcontext()
+    with show_progress:
         ds_sum.to_zarr(path, group=f"{track}_sum", mode="w")
 
     ds_miss = compute_track_missingness(
