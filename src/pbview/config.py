@@ -8,6 +8,7 @@ __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
 __data__ = "2026-09-01"
 
+import os
 
 RAW_CSS = """
         .sidenav#sidebar {
@@ -39,8 +40,14 @@ VCARD_STYLE = {
 DEFAULT_SAMPLE_SET = "ALL"
 
 # Chunking
-MIN_POSITION_CHUNK_SIZE = 1_000_000
-TARGET_BYTES = 100_000_000
+
+MIN_POSITION_CHUNK_SIZE = os.environ.get("PBVIEW_MIN_POSITION_CHUNK_SIZE", 1_000_000)
+TARGET_BYTES: int = int(os.environ.get("PBVIEW_TARGET_BYTES", 100_000_000))
+MAX_COVERAGE_BIN: int = int(os.environ.get("PBVIEW_MAX_COVERAGE_BIN", 100_000))
+MAX_COVERAGE_PER_SAMPLE: int = int(
+    os.environ.get("PBVIEW_MAX_COVERAGE_PER_SAMPLE", 100)
+)
+
 
 # Schema
 SCHEMA_VERSION = 1

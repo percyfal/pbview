@@ -121,7 +121,7 @@ def compute_threshold_defaults(
     track = datastore.tracks[active_track]
     for s in datastore.base_coord.sample_set_names:
         coord = datastore.base_coord.with_sample_sets([s])
-        h = track._pre.sum_hist(s)
+        h = track._pre.sum_hist(s, coord)
         stats = hist_stats(h)
         lo = int(0.6 * stats["mean"])
         mb = int(hist_quantile(h, max_bin_q) * max_bin_headroom)

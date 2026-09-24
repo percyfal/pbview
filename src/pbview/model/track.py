@@ -56,14 +56,30 @@ class PrecomputedTrack:
                 self.missing_cutoff[int(m.group("t"))] = dt[key]
 
     @pn.cache
-    def _sum_hist_cached(self, dataset_id: str, sample_set: str) -> np.ndarray:
+    def _sum_hist_cached(
+        self, dataset_id: str, sample_set: str, max_coverage_bin: int
+    ) -> np.ndarray:
         sums = self.sum["values"].sel(sample_set=sample_set).data
         approx_max = int(sums.max().compute())
+        if approx_max > max_coverage_bin:
+            logger.warning(
+                "Coverage sum histogram exceeds configured maximum (%d > %d). "
+                "Truncating to max coverage bin.",
+                approx_max,
+                max_coverage_bin,
+            )
+            approx_max = max_coverage_bin
         return da.bincount(sums, minlength=approx_max + 1).compute()
 
-    def sum_hist(self, sample_set: str) -> np.ndarray:
+    def sum_hist(self, sample_set: str, coord: Coordinates) -> np.ndarray:
         if sample_set not in self._local_cache:
-            self._local_cache[sample_set] = self._sum_hist_cached(self._id, sample_set)
+            max_coverage_bin = min(
+                coord.n_samples * config.MAX_COVERAGE_PER_SAMPLE,
+                config.MAX_COVERAGE_BIN,
+            )
+            self._local_cache[sample_set] = self._sum_hist_cached(
+                self._id, sample_set, max_coverage_bin
+            )
         return self._local_cache[sample_set]
 
     def contig_mean_coverage(self, sample_set: str) -> np.ndarray:
