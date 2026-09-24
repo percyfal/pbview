@@ -18,7 +18,7 @@ from pbview.model import datastore  # noqa
 
 import sys
 from collections import deque
-from pbview.__main__ import serve
+from pbview.cli.serve import serve
 from pbview.logging import app_logger as logger
 
 arglist = deque(sys.argv)

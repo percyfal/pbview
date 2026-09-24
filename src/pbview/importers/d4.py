@@ -28,7 +28,6 @@ def ingest(
         pbzarr.create_store(path)
 
     sources: list[tuple[str, str]] = []
-    print("Sources: ", sources)
     for fn in d4:
         if not re.search(r".d4$", fn):
             raise ValueError(f"Input file {fn} does not have .d4 extension")
