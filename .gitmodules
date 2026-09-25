@@ -1,0 +1,3 @@
+[submodule "opt/pbzarr"]
+	path = opt/pbzarr
+	url = https://github.com/pbzarr/pbzarr

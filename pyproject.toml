@@ -13,8 +13,6 @@ dependencies = [
   "param>=2.4.0",
   "scipy>=1.18.1",
   "watchfiles>=1.2.0",
-  #"pbzarr @ git+https://github.com/pbzarr/pbzarr.git@main?rev_type=branch",
-  "pbzarr @ file:///home/peru/dev/python/pbview/opt/pbzarr",
   "jsonschema>=4.24.0",
   "distributed>=2026.7.1,<2027",
   "pyarrow>=25.0.1,<26",
@@ -86,8 +84,31 @@ channels = ["conda-forge", "bioconda"]
 platforms = ["linux-64"]
 preview = ["pixi-build"]
 
+[tool.pixi.dependencies]
+rust = "*"
+clang = "*"
+libclang = "*"
+gcc_linux-64 = "*"
+gxx_linux-64 = "*"
+sysroot_linux-64 = "2.17"
+patchelf = "*"
+maturin = "*"
+pkg-config = "*"
+
+[tool.pixi.activation.env]
+LIBCLANG_PATH = "$CONDA_PREFIX/lib"
+CC = "$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-cc"
+CXX = "$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++"
+AR = "$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-ar"
+CC_x86_64_unknown_linux_gnu = "$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-cc"
+CXX_x86_64_unknown_linux_gnu = "$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++"
+HOST_CC = "$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-cc"
+HOST_CXX = "$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++"
+CARGO_TARGET_DIR = "$PIXI_PROJECT_ROOT/.cargo-target"
+
 [tool.pixi.pypi-dependencies]
 pbview = { path = ".", editable = true }
+pbzarr = { path = "opt/pbzarr", editable = true }
 
 [tool.pixi.tasks]
 
