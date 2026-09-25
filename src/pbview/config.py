@@ -6,7 +6,7 @@ dimensions and color schemes.
 
 __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
-__data__ = "2026-09-01"
+__date__ = "2026-09-01"
 
 import os
 

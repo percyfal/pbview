@@ -1,9 +1,12 @@
 import multiprocessing  # noqa
 from typing import Callable, Mapping  # noqa
 
+import atexit
+
 import sys
 import click
 import dask
+from dask.distributed import Client, LocalCluster
 import functools
 from click.decorators import FC
 
@@ -36,6 +39,8 @@ def d4_argument(nargs: int = 1) -> Callable[[FC], FC]:
     return click.argument("d4", type=click.Path(exists=True), nargs=nargs)
 
 
+# FIXME: rename throughout to sampleset_info: this is about grouping
+# samples into sample sets
 def sampleinfo_option() -> Callable[[FC], FC]:
     return click.option(
         "--sampleinfo",
@@ -171,12 +176,74 @@ def track_name_option(default: str = "depth") -> Callable[[FC], FC]:
     )
 
 
+def _init_dask(
+    port=18786,
+    dashboard=44446,
+    threads=1,
+    workers=8,
+    memory_limit="4GB",
+) -> Client:
+    """Initialize dask scheduler"""
+    try:
+        client = Client(f"tcp://localhost:{port}", timeout="2s")
+        logger.info("Connected to existing dask cluster at :%d", port)
+    except OSError:
+        cluster = LocalCluster(
+            processes=False,
+            scheduler_port=port,
+            dashboard_address=f":{dashboard}",
+            threads_per_worker=threads,
+            n_workers=workers,
+            memory_limit=memory_limit,
+        )
+        client = Client(cluster)
+        logger.info("Started new dask cluster; dashboard at :%d", dashboard)
+        atexit.register(cluster.close)
+    atexit.register(client.close)
+    return client
+
+
+def _init_threads(workers=2, threads=2, memory_limit="4GB", **_):
+    logger.info(
+        "Setting threads to %d, workers to %d, memory limit to %s",
+        threads,
+        workers,
+        memory_limit,
+    )
+    dask.config.set(
+        scheduler="threads",
+        num_workers=workers,
+        threads_per_worker=threads,
+        memory_limit=memory_limit,
+    )
+
+
+def setup_dask_scheduler(func):
+    @functools.wraps(func)
+    def wrapper(**kwargs):
+        kw = {}
+        kw["threads"] = kwargs.pop("threads", 2)
+        kw["workers"] = kwargs.pop("workers", 2)
+        kw["memory_limit"] = kwargs.pop("memory_limit", "4GB")
+        kw["port"] = kwargs.pop("port", 18786)
+        kw["dashboard"] = kwargs.pop("dashboard", 44446)
+        use_dask = kwargs.pop("use_dask", False)
+        if use_dask:
+            _init_dask(**kw)
+        else:
+            _init_threads(**kw)
+        return func(**kwargs)
+
+    return wrapper
+
+
 def set_threads(func):
     @functools.wraps(func)
     def wrapper(**kwargs):
-        threads = kwargs.pop("threads", 2)
-        workers = kwargs.pop("workers", 1)
-        memory_limit = kwargs.pop("memory_limit", "4GB")
+        kw = {}
+        kw["threads"] = kwargs.pop("threads", 2)
+        kw["workers"] = kwargs.pop("workers", 1)
+        kw["memory_limit"] = kwargs.pop("memory_limit", "4GB")
         use_dask = kwargs.pop("use_dask", False)
         if use_dask:
             logger.error(
@@ -185,18 +252,7 @@ def set_threads(func):
             )
             sys.exit(1)
         else:
-            logger.info(
-                "Setting threads to %d, workers to %d, memory limit to %s",
-                threads,
-                workers,
-                memory_limit,
-            )
-            dask.config.set(
-                scheduler="threads",
-                num_workers=workers,
-                threads_per_worker=threads,
-                memory_limit=memory_limit,
-            )
+            _init_threads(**kw)
         return func(**kwargs)
 
     return wrapper
