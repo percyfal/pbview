@@ -7,7 +7,7 @@ from pbview.logging import log_level  # noqa
 from pbview.model import datastore  # noqa
 
 from . import __version__
-from .cli import import_d4, mask, preprocess, summarize
+from .cli import annotation, import_d4, mask, preprocess, serve, summarize
 
 
 @click.group()
@@ -18,9 +18,10 @@ def cli():
 
 cli.add_command(import_d4.import_d4)
 cli.add_command(preprocess.preprocess)
-cli.add_command(summarize.summarize)
 cli.add_command(mask.mask)
-
+cli.add_command(summarize.summarize)
+cli.add_command(annotation.annotation)
+cli.add_command(serve.serve)
 
 if __name__ == "__main__":
     cli()

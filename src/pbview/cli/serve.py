@@ -11,6 +11,7 @@ from ._common import (
     path_argument,
     port_option,
     sampleinfo_option,
+    setup_dask_scheduler,
     show_option,
     threads_option,
     use_dask_option,
@@ -33,34 +34,26 @@ from ._common import (
 @log_filter_option()
 @log_level()
 @click.option("--servable", is_flag=True, default=False, help="Make app servable")
+@setup_dask_scheduler
 def serve(
     path,
     annotation_file,
     sampleinfo,
-    port,
     dask_port,
     show,
-    threads,
     servable,
-    workers,
-    dashboard,
     chunk_size,
-    use_dask,
 ):
     """Serve the app."""
     from ..app import serve as app_serve
 
     app_serve(
         path=path,
-        port=port,
         dask_port=dask_port,
         show=show,
-        threads_per_worker=threads,
-        n_workers=workers,
         servable=servable,
         sampleinfo=sampleinfo,
-        dashboard=dashboard,
         verbose=False,
         chunk_size=chunk_size,
-        use_dask=use_dask,
+        annotation_file=annotation_file,
     )

@@ -2,7 +2,7 @@
 
 __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
-__data__ = "2026-09-23"
+__date__ = "2026-09-23"
 
 from pathlib import Path
 
@@ -26,7 +26,7 @@ from ._common import (
 
 @click.group()
 def mask() -> None:
-    """Generate and summarize accessible sites"""
+    """Generate and summarize masks."""
     pass
 
 
@@ -61,10 +61,13 @@ def generate(
     progress: bool,
     sampleinfo: str | None = None,
 ) -> None:
-    """Generate accessible sites for the pbzarr store.
+    """Generate accessible sites from the pbzarr store.
 
-    Generate accessible sites for the pbzarr store at PATH based on threshold
-    values in THRESHOLD.
+    Generate accessible sites mask and exclusion masks for the pbzarr
+    store at PATH based on threshold values in THRESHOLD. Generated
+    masks are output in a separate Zarr archive, defaulting to
+    PATH_mask.
+
     """
     output = output or Path(path).with_name(f"{Path(path).name}_mask")
     _generate.generate_masks(
