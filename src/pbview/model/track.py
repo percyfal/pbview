@@ -84,6 +84,7 @@ class PrecomputedTrack:
 
     def contig_mean_coverage(self, sample_set: str) -> np.ndarray:
         if sample_set not in self._contig_mean_cache:
+            # FIXME: make progress optional
             with ProgressBar():
                 self._contig_mean_cache[sample_set] = self._compute_contig_mean(
                     sample_set
@@ -92,10 +93,28 @@ class PrecomputedTrack:
 
     def _compute_contig_mean(self, sample_set: str) -> np.ndarray:
         logger.info("Calculating mean contig coverages")
-        sums = self.sum["values"].sel(sample_set=sample_set).values
+        sums_da = self.sum["values"].sel(sample_set=sample_set).data
         offsets = self.sum["offsets"].values
         lengths = np.diff(offsets)
-        per_contig_sum = np.add.reduceat(sums, offsets[:-1])
+        n_contigs = len(lengths)
+
+        def _partial_reduceat(chunk, block_info=None):
+            start = block_info[0]["array-location"][0][0]
+            end = block_info[0]["array-location"][0][1]
+            first = np.searchsorted(offsets, start, side="right") - 1
+            last = np.searchsorted(offsets, end, side="left")
+            local_offsets = np.clip(offsets[first : last + 1] - start, 0, len(chunk))
+            if len(local_offsets) < 2:
+                return np.zeros(n_contigs, dtype=np.int64)
+            reduced = np.add.reduceat(chunk, local_offsets[:-1])
+            partial = np.zeros(n_contigs, dtype=np.int64)
+            partial[first : first + len(reduced)] = reduced
+            return partial.reshape(1, -1)
+
+        per_chunk = sums_da.map_blocks(
+            _partial_reduceat, dtype=np.int64, chunks=(1, n_contigs), new_axis=1
+        )
+        per_contig_sum = per_chunk.sum(axis=0).compute()
         return per_contig_sum / lengths
 
 
