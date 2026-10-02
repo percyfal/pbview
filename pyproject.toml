@@ -30,8 +30,6 @@ dev = [
 
 [project.scripts]
 pbview = "pbview:__main__.cli"
-# pbview-import = "pbview.tools.import:cli"
-# pbview-preprocess = "pbview.tools.preprocess:cli"
 
 [build-system]
 build-backend = "hatchling.build"
@@ -110,8 +108,6 @@ CARGO_TARGET_DIR = "$PIXI_PROJECT_ROOT/.cargo-target"
 pbview = { path = ".", editable = true }
 pbzarr = { path = "opt/pbzarr", editable = true }
 
-[tool.pixi.tasks]
-
 [tool.pixi.tasks.init_store]
 cmd = "test -d 'store' && echo 'store exists' || pbview import store tests/data/s*.per-base.d4"
 
@@ -153,36 +149,44 @@ cmd = "quarto publish gh-pages docs --no-browser"
 [tool.pixi.environments]
 default = { solve-group = "default" }
 dev = { features = ["dev"], solve-group = "default" }
-lint = { features = ["lint"], solve-group = "default" }
 quartodoc = { features = ["quartodoc"], solve-group = "default" }
+
+[tool.pixi.feature.dev.dependencies]
+basedpyright = "*"
+pre-commit = "*"
+pytest = "*"
+
+[tool.pixi.feature.dev.tasks]
+lint = "pre-commit run --all-files"
+lint-install = "pre-commit install --install-hooks -t=pre-commit -t=push"
 
 [tool.pixi.feature.dev.tasks.test]
 args = [{ "arg" = "test", default = "tests" }]
 cmd = "pytest -v -s {{test}}"
 
-[tool.pixi.feature.lint.tasks]
-actionlint = { cmd = "actionlint", env = { SHELLCHECK_OPTS = "-e SC2086" } }
-lint = { cmd = "pre-commit run --all-files --hook-stage=manual", description = "Run all linters and formatters on all code" }
-pre-commit-install = "pre-commit install --install-hooks -t=pre-commit -t=pre-push"
-pre-commit-install-minimal = "pre-commit install -t=pre-commit"
-pre-commit-run = "pre-commit run --all-files"
-ruff-format = "ruff format --force-exclude"
-ruff-lint = "ruff check --fix --exit-non-zero-on-fix --force-exclude"
-shell-format = "shfmt --write --indent=4 --simplify --binary-next-line"
-toml-format = { cmd = "taplo fmt", env = { RUST_LOG = "warn" } }
-toml-lint = "taplo lint --verbose **/pyproject.toml"
-typecheck-python = "mypy"
-typos = "typos --write-changes --force-exclude"
+# [tool.pixi.feature.lint.tasks]
+# actionlint = { cmd = "actionlint", env = { SHELLCHECK_OPTS = "-e SC2086" } }
+# lint = { cmd = "pre-commit run --all-files --hook-stage=manual", description = "Run all linters and formatters on all code" }
+# pre-commit-install = "pre-commit install --install-hooks -t=pre-commit -t=pre-push"
+# pre-commit-install-minimal = "pre-commit install -t=pre-commit"
+# pre-commit-run = "pre-commit run --all-files"
+# ruff-format = "ruff format --force-exclude"
+# ruff-lint = "ruff check --fix --exit-non-zero-on-fix --force-exclude"
+# shell-format = "shfmt --write --indent=4 --simplify --binary-next-line"
+# toml-format = { cmd = "taplo fmt", env = { RUST_LOG = "warn" } }
+# toml-lint = "taplo lint --verbose **/pyproject.toml"
+# typecheck-python = "mypy"
+# typos = "typos --write-changes --force-exclude"
 
-[tool.pixi.feature.lint.dependencies]
-pre-commit = "*"
-pre-commit-hooks = "*"
-ruff = "*"
-typos = "*"
-actionlint = "*"
-go-shfmt = "*"
-taplo = "*"
-pylint = ">=3.3.8,<4"
+# [tool.pixi.feature.lint.dependencies]
+# pre-commit = "*"
+# pre-commit-hooks = "*"
+# ruff = "*"
+# typos = "*"
+# actionlint = "*"
+# go-shfmt = "*"
+# taplo = "*"
+# pylint = ">=3.3.8,<4"
 
 [tool.pixi.feature.quartodoc.dependencies]
 quartodoc = "*"
@@ -196,3 +200,4 @@ cmd = """
 [tool.basedpyright]
 venvPath = ".pixi/envs"
 venv = "dev"
+typeCheckingMode = "standard"
