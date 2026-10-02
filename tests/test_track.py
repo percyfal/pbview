@@ -122,3 +122,11 @@ def test_optimal_chunking(track):
     assert cs["sample"] == -1
     cs = track._optimal_chunks("position")
     assert cs["position"] == -1
+
+
+def test_contig_mean_coverage(track):
+    np.testing.assert_allclose(
+        track._pre.contig_mean_coverage("ALL"),
+        [75.17373, 115.60176, 123.73403],
+        rtol=1e-5,
+    )

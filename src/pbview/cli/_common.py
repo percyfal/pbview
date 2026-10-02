@@ -36,7 +36,7 @@ def path_argument(
 
 
 def d4_argument(nargs: int = 1) -> Callable[[FC], FC]:
-    return click.argument("d4", type=click.Path(exists=True), nargs=nargs)
+    return click.argument("d4files", type=click.Path(exists=True), nargs=nargs)
 
 
 # FIXME: rename throughout to sampleset_info: this is about grouping
