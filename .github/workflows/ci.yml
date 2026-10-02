@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.13]
+        environment: [dev]
     defaults:
       run:
         shell: bash -l {0} # a login shell is required for conda activation
@@ -23,6 +23,7 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.8.10
         with:
           pixi-version: v0.81.0
+          environments: ${{ matrix.environment }}
 
       - name: Run linting
         run: pixi r lint
