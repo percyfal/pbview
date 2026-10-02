@@ -37,9 +37,9 @@ from ._common import (
 @setup_dask_scheduler
 def serve(
     path,
+    port,
     annotation_file,
     sampleinfo,
-    dask_port,
     show,
     servable,
     chunk_size,
@@ -49,7 +49,7 @@ def serve(
 
     app_serve(
         path=path,
-        dask_port=dask_port,
+        port=port,
         show=show,
         servable=servable,
         sampleinfo=sampleinfo,

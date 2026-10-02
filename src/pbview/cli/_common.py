@@ -139,7 +139,7 @@ def chunk_size_option(default: int = 1000000) -> Callable[[FC], FC]:
 
 
 def port_option(default: int = 5507) -> Callable[[FC], FC]:
-    return click.option("--port", default=default, help="Port to serve on")
+    return click.option("port", "--port", default=default, help="Port to serve on")
 
 
 def show_option(default: bool = True) -> Callable[[FC], FC]:
@@ -225,7 +225,7 @@ def setup_dask_scheduler(func):
         kw["threads"] = kwargs.pop("threads", 2)
         kw["workers"] = kwargs.pop("workers", 2)
         kw["memory_limit"] = kwargs.pop("memory_limit", "4GB")
-        kw["port"] = kwargs.pop("port", 18786)
+        kw["dask_port"] = kwargs.pop("dask_port", 18786)
         kw["dashboard"] = kwargs.pop("dashboard", 44446)
         use_dask = kwargs.pop("use_dask", False)
         if use_dask:
