@@ -256,3 +256,12 @@ def set_threads(func):
         return func(**kwargs)
 
     return wrapper
+
+
+def sampleset_name_option(default: str = "ALL") -> Callable[[FC], FC]:
+    return click.option(
+        "--sampleset-name",
+        type=str,
+        default=default,
+        help="Name of the sample set to use for analysis",
+    )
