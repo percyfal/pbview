@@ -97,7 +97,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2026c-h151e31d_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/urllib3-2.7.0-pyhd8ed1ab_0.conda
       - pypi: ./
-      - pypi: ./opt/pbzarr
+      - pypi: git+https://github.com/pbzarr/pbzarr.git?rev=main#cdaf9bd11ef9f8d38459136c77c9a1f34fbb8a6c
       - pypi: https://files.pythonhosted.org/packages/02/be/5d2d47b1fb58943194fb59dcf222f7c4e35122ec0ffe8c36e18b5d728f0b/tblib-3.2.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/04/5f/9ff93450ba96b09c7c2b3f81c94de31c89f92292f1380261bd7195bea4ea/contourpy-1.3.3-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/0c/d5/c5db1ea3394c6e1732fb3286b3bd878b59507a8f77d32a2cebda7d7b7cd4/donfig-0.8.1.post1-py3-none-any.whl
@@ -273,7 +273,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/urllib3-2.7.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/virtualenv-21.14.2-pyh5ded981_0.conda
       - pypi: ./
-      - pypi: ./opt/pbzarr
+      - pypi: git+https://github.com/pbzarr/pbzarr.git?rev=main#cdaf9bd11ef9f8d38459136c77c9a1f34fbb8a6c
       - pypi: https://files.pythonhosted.org/packages/02/be/5d2d47b1fb58943194fb59dcf222f7c4e35122ec0ffe8c36e18b5d728f0b/tblib-3.2.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/04/5f/9ff93450ba96b09c7c2b3f81c94de31c89f92292f1380261bd7195bea4ea/contourpy-1.3.3-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
@@ -515,7 +515,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/urllib3-2.7.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
       - pypi: ./
-      - pypi: ./opt/pbzarr
+      - pypi: git+https://github.com/pbzarr/pbzarr.git?rev=main#cdaf9bd11ef9f8d38459136c77c9a1f34fbb8a6c
       - pypi: https://files.pythonhosted.org/packages/02/be/5d2d47b1fb58943194fb59dcf222f7c4e35122ec0ffe8c36e18b5d728f0b/tblib-3.2.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/04/5f/9ff93450ba96b09c7c2b3f81c94de31c89f92292f1380261bd7195bea4ea/contourpy-1.3.3-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/0c/d5/c5db1ea3394c6e1732fb3286b3bd878b59507a8f77d32a2cebda7d7b7cd4/donfig-0.8.1.post1-py3-none-any.whl
@@ -2264,7 +2264,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/pre-commit?source=compressed-mapping
+  - pkg:pypi/pre-commit?source=hash-mapping
   run_exports: {}
   size: 201879
   timestamp: 1786408353117
@@ -2635,13 +2635,15 @@ packages:
   - jsonschema>=4.24.0
   - panel>=1.9.0
   - param>=2.4.0
+  - pbzarr @ git+https://github.com/pbzarr/pbzarr.git@main
   - pyarrow>=25.0.1,<26
   - pyranges1>=1.4.4,<2
   - scipy>=1.18.1
   - watchfiles>=1.2.0
   requires_python: '>=3.12'
-- pypi: ./opt/pbzarr
+- pypi: git+https://github.com/pbzarr/pbzarr.git?rev=main#cdaf9bd11ef9f8d38459136c77c9a1f34fbb8a6c
   name: pbzarr
+  version: 0.6.0
   requires_dist:
   - zarr>=3.0,<4
   - xarray>=2025.8
