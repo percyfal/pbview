@@ -17,6 +17,7 @@ dependencies = [
   "distributed>=2026.7.1,<2027",
   "pyarrow>=25.0.1,<26",
   "pyranges1>=1.4.4,<2",
+  "pbzarr @ git+https://github.com/pbzarr/pbzarr.git@main",
 ]
 
 [dependency-groups]
@@ -106,7 +107,6 @@ CARGO_TARGET_DIR = "$PIXI_PROJECT_ROOT/.cargo-target"
 
 [tool.pixi.pypi-dependencies]
 pbview = { path = ".", editable = true }
-pbzarr = { path = "opt/pbzarr", editable = true }
 
 [tool.pixi.tasks.init_store]
 cmd = "test -d 'store' && echo 'store exists' || pbview import store tests/data/s*.per-base.d4"
@@ -167,11 +167,6 @@ cmd = "pytest -v -s {{test}}"
 [tool.pixi.feature.quartodoc.dependencies]
 quartodoc = "*"
 quarto = ">=1.8.25,<2"
-
-[tool.pixi.tasks.clone-pbzarr]
-cmd = """
-    git clone https://github.com/pbzarr/pbzarr.git opt/pbzarr
-"""
 
 [tool.basedpyright]
 venvPath = ".pixi/envs"
