@@ -86,7 +86,7 @@ def generate(
 
     """
     output = output or Path(path).with_name(f"{Path(path).name}_mask")
-    _generate.generate_masks(
+    _generate.generate_mask(
         path,
         sampleinfo=sampleinfo,
         threshold=threshold,
@@ -109,7 +109,7 @@ def generate(
 @threads_option(default=1)
 @workers_option(default=1)
 @memory_limit_option()
-@track_name_option(default="combined")
+@track_name_option(default="accessible")
 @sampleset_name_option()
 @log_level()
 @progress_option()
