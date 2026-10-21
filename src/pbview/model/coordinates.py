@@ -9,6 +9,7 @@ __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
 from collections.abc import Iterable
+from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
 xr.set_options(display_expand_attrs=False)
 
 
+@dataclass(frozen=True)
 class Coordinates:
     """Immutable class representation of active sample/contig
     coordinates.
@@ -44,32 +46,26 @@ class Coordinates:
 
     """
 
-    def __init__(
-        self,
-        datastore: DataStore,
-        *,
-        sample_selected: npt.NDArray[np.bool_] | None = None,
-        contig_selected: npt.NDArray[np.bool_] | None = None,
-    ) -> None:
-        self._datastore = datastore
-        # Selection arrays: True = selected. Default = keep everything
+    datastore: DataStore
+    sample_selected: npt.NDArray[np.bool_] | None = None
+    contig_selected: npt.NDArray[np.bool_] | None = None
+
+    def __post_init__(self):
         n_samples_all, n_contigs_all = self.n_samples_all, self.n_contigs_all
-        self._sample_selected: npt.NDArray[np.bool_] = (
+        object.__setattr__(
+            self,
+            "sample_selected",
             np.ones(n_samples_all, dtype=bool)
-            if sample_selected is None
-            else np.asarray(sample_selected, dtype=bool)
+            if self.sample_selected is None
+            else np.asarray(self.sample_selected, dtype=bool),
         )
-        self._contig_selected: npt.NDArray[np.bool_] = (
+        object.__setattr__(
+            self,
+            "contig_selected",
             np.ones(n_contigs_all, dtype=bool)
-            if contig_selected is None
-            else np.asarray(contig_selected, dtype=bool)
+            if self.contig_selected is None
+            else np.asarray(self.contig_selected, dtype=bool),
         )
-        # Freeze the underlying arrays to catch accidental mutation.
-        for arr in (
-            self._sample_selected,
-            self._contig_selected,
-        ):
-            arr.setflags(write=False)
 
     def __str__(self):
         return (
@@ -92,12 +88,24 @@ class Coordinates:
     def __hash__(self) -> int:
         return hash(
             (
-                self._datastore.id,
+                self.datastore.id,
                 id(self.samples_all),
                 id(self.contigs_all),
                 id(self.offsets),
-                self._sample_selected.tobytes(),
-                self._contig_selected.tobytes(),
+                self.sample_selected.tobytes(),
+                self.contig_selected.tobytes(),
+            )
+        )
+
+    def __eq__(self, other):
+        return all(
+            (
+                self.datastore.id == other.datastore.id,
+                id(self.samples_all) == id(other.samples_all),
+                id(self.contigs_all) == id(other.contigs_all),
+                id(self.offsets) == id(other.offsets),
+                np.array_equal(self.sample_selected, other.sample_selected),
+                np.array_equal(self.contig_selected, other.contig_selected),
             )
         )
 
@@ -108,21 +116,15 @@ class Coordinates:
         contig_selected: npt.NDArray[np.bool_] | None = None,
     ) -> "Coordinates":
         """Return a new instance sharing raw data, with new selection arrays."""
-        new = self.__class__.__new__(self.__class__)
-
-        new._datastore = self._datastore
-        new._sample_selected = (
-            self._sample_selected
+        new = replace(
+            self,
+            sample_selected=self.sample_selected
             if sample_selected is None
-            else np.asarray(sample_selected, dtype=bool)
-        )
-        new._contig_selected = (
-            self._contig_selected
+            else np.asarray(sample_selected, dtype=bool),
+            contig_selected=self.contig_selected
             if contig_selected is None
-            else np.asarray(contig_selected, dtype=bool)
+            else np.asarray(contig_selected, dtype=bool),
         )
-        new._sample_selected.setflags(write=False)
-        new._contig_selected.setflags(write=False)
         return new
 
     def matching_sample_set(self) -> str | None:
@@ -215,25 +217,25 @@ class Coordinates:
     @property
     def samples_all(self) -> npt.NDArray:
         """All samples in the dataset"""
-        return self._datastore.samples
+        return self.datastore.samples
 
     @property
     def n_samples_all(self) -> int:
-        return self._datastore.n_samples
+        return self.datastore.n_samples
 
     @property
     def contigs_all(self) -> npt.NDArray:
         """All contigs in the dataset"""
-        return self._datastore.contigs
+        return self.datastore.contigs
 
     @property
     def n_contigs_all(self) -> int:
-        return self._datastore.n_contigs
+        return self.datastore.n_contigs
 
     @property
     def offsets(self) -> npt.NDArray:
         """Contig offsets"""
-        return self._datastore.offsets
+        return self.datastore.offsets
 
     @cached_property
     def _contig_len_all(self) -> npt.NDArray[np.uint32]:
@@ -279,17 +281,17 @@ class Coordinates:
             .tolist()
         )
 
-    @property
-    def contig_selected(self):
-        return self._contig_selected
+    # @property
+    # def contig_selected(self):
+    #     return self.contig_selected
 
     @property
     def contig_excluded(self):
         return ~self.contig_selected
 
-    @property
-    def sample_selected(self):
-        return self._sample_selected
+    # @property
+    # def sample_selected(self):
+    #     return self.sample_selected
 
     @property
     def sample_excluded(self):
@@ -315,20 +317,20 @@ class Coordinates:
     @property
     def sample_set_membership(self):
         """Return sample sets per sample"""
-        return self._datastore.sample_set_membership[self.sample_selected]
+        return self.datastore.sample_set_membership[self.sample_selected]
 
     @property
     def sample_set_membership_all(self):
         """Return sample sets per sample"""
-        return self._datastore.sample_set_membership
+        return self.datastore.sample_set_membership
 
     @property
     def default_sample_set_membership(self):
-        return self._datastore.default_sample_set_membership[self.sample_selected]
+        return self.datastore.default_sample_set_membership[self.sample_selected]
 
     @property
     def default_sample_set_membership_all(self):
-        return self._datastore.default_sample_set_membership
+        return self.datastore.default_sample_set_membership
 
     @property
     def n_sample_sets(self):
@@ -356,7 +358,7 @@ class Coordinates:
 
     @property
     def user_sample_set_names_all(self) -> list[str]:
-        return self._datastore.user_sample_set_names
+        return self.datastore.user_sample_set_names
 
     @property
     def sample_set_names(self) -> list[str]:
@@ -364,16 +366,16 @@ class Coordinates:
 
     @property
     def sample_set_names_all(self) -> list[str]:
-        return self._datastore.sample_set_names
+        return self.datastore.sample_set_names
 
     @property
     def default_sample_set_name(self) -> str:
-        return self._datastore.default_sample_set_name
+        return self.datastore.default_sample_set_name
 
     @property
     def has_sample_sets(self):
         """Return True if there are any sample sets other than the default set."""
-        return self._datastore.has_sample_sets
+        return self.datastore.has_sample_sets
 
     @cached_property
     def genome_size(self):
