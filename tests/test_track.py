@@ -1,7 +1,28 @@
+import _helpers
 import numpy as np
 import pytest
+import xarray as xr
 
 from pbview.model.datastore import DataStore
+from pbview.model.track import Track
+
+
+@pytest.fixture
+def d1() -> xr.DataTree:
+    """Track data fixture"""
+    values = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    contigs = np.array(["chr1", "chr2"])
+    offsets = np.array([0, 2, 3])
+    samples = np.array(["s1", "s2", "s3"])
+    return _helpers.make_datatree(values, contigs, offsets, samples)
+
+
+def test_track_init(d1):
+    t = Track("test_track", d1)
+    assert t.name == "test_track"
+    assert t.column_dim == "sample"
+    assert np.array_equal(t.columns, ["s1", "s2", "s3"])
+    assert np.array_equal(t._data.position.values, [0, 1, 2])
 
 
 @pytest.fixture()

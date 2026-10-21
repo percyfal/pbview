@@ -131,6 +131,7 @@ class Track:
     """
 
     TARGET_BYTES = config.TARGET_BYTES
+    SPATIAL_DIMS = config.SPATIAL_DIMS
 
     def __init__(
         self,
@@ -141,12 +142,30 @@ class Track:
         self.name = track_name
         self._data = data
         self._pre = PrecomputedTrack(preprocess_data, track_name=track_name)
+        column_dims = [dim for dim in data.dims if dim not in self.SPATIAL_DIMS]
+        if len(column_dims) > 1:
+            raise ValueError(
+                f"Multiple column dimensions found in track {track_name}: {column_dims}"
+            )
+        self._column_dim = data.attrs.get(
+            "perbase:column_dim", column_dims[0] if column_dims else "sample"
+        )
 
     def __repr__(self) -> str:
         return f"<Track(name={self.name})>"
 
     def __str__(self) -> str:
         return f"Track(name={self.name})"
+
+    @property
+    def column_dim(self) -> str:
+        """Return the name of the column dimension."""
+        return self._column_dim
+
+    @property
+    def columns(self) -> list[str]:
+        """Return the list of column names."""
+        return self._data[self.column_dim].values.tolist()
 
     def _select_positions(self, base: xr.DataArray, coord: Coordinates) -> xr.DataArray:
         """Apply a contig/position selection from coord."""

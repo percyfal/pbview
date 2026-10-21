@@ -49,5 +49,10 @@ MAX_COVERAGE_PER_SAMPLE: int = int(
 )
 
 
+# FIXME (pbzarr>0.6): the spatial dimensions will be accessible from
+# the root node
+# Spatial dimensions
+SPATIAL_DIMS = ["position", "contig", "contig_boundary"]
+
 # Schema
 SCHEMA_VERSION = 1
