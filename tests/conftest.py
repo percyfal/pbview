@@ -147,17 +147,17 @@ def d4all(d4file) -> list[Path]:
 
 
 @pytest.fixture(scope="session")
-def store(tmpdir_factory, d4all, sampleinfo):
+def store(tmpdir_factory, d4all, sampleset_info):
     p = Path(tmpdir_factory.mktemp("store")) / "datastore.zarr"
     d4all = [str(p) for p in d4all]
     import_d4.ingest(str(p), d4all)
-    preprocess.preprocess(p, sampleinfo=sampleinfo)
+    preprocess.preprocess(p, sampleset_info=sampleset_info)
     return p
 
 
 @pytest.fixture(scope="session")
-def sampleinfo():
-    return pytest.dname / "data" / "sampleinfo.tsv"
+def sampleset_info():
+    return pytest.dname / "data" / "sampleset_info.tsv"
 
 
 @pytest.fixture(scope="session")

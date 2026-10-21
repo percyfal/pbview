@@ -26,10 +26,10 @@ def sample_sets(request):
 
 
 @pytest.fixture()
-def ds(store, sampleinfo, sample_sets):
+def ds(store, sampleset_info, sample_sets):
     if sample_sets is None:
         return DataStore(path=store)
-    return DataStore(path=store, sampleinfo=sampleinfo)
+    return DataStore(path=store, sampleset_info=sampleset_info)
 
 
 @pytest.fixture

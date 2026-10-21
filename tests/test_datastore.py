@@ -62,7 +62,7 @@ def test_generic_zarr_store(zarr_group):
         DataStore(path=zarr_group)
 
 
-# FIXME: parameterize on sampleinfo
+# FIXME: parameterize on sampleset_info
 def test_datastore(store):
     ds = DataStore(path=store)
     assert isinstance(ds, DataStore)

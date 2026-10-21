@@ -16,7 +16,7 @@ from ._common import (
     memory_limit_option,
     path_argument,
     progress_option,
-    sampleinfo_option,
+    sampleset_info_option,
     set_threads,
     threads_option,
     track_name_option,
@@ -40,7 +40,7 @@ def annotation() -> None:
 @track_name_option()
 @log_level()
 @progress_option()
-@sampleinfo_option()
+@sampleset_info_option()
 @use_dask_option()
 @set_threads
 def import_annotation(
@@ -48,7 +48,7 @@ def import_annotation(
     output: Path | str,
     track_name: str,
     progress: bool,
-    sampleinfo: str | None = None,
+    sampleset_info: str | None = None,
 ) -> None:
     """Import annotation tracks to PATH."""
     output = output or Path(path).with_name(f"{Path(path).name}_mask")

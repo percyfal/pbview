@@ -72,7 +72,7 @@ class NpEncoder(json.JSONEncoder):
 
 
 class DataStore:
-    def __init__(self, path: Path | str, sampleinfo: Path | str | None = None):
+    def __init__(self, path: Path | str, sampleset_info: Path | str | None = None):
         self._path = Path(path)
         try:
             self.store = pbzarr.open(self._path)
@@ -87,9 +87,9 @@ class DataStore:
         # FIXME: temporary solution to retrieving the coordinates
         self._store_coords = self.store[self._active_track].coords
 
-        self._has_sampleinfo = sampleinfo is not None
-        self._user_sample_set_membership = self._parse_sampleinfo(sampleinfo)
-        if self._has_sampleinfo:
+        self._has_sampleset_info = sampleset_info is not None
+        self._user_sample_set_membership = self._parse_sampleset_info(sampleset_info)
+        if self._has_sampleset_info:
             self._user_sample_set_membership.setflags(write=False)
 
         self.base_coord = Coordinates(self)
@@ -108,11 +108,11 @@ class DataStore:
     def __str__(self) -> str:
         return f"DataStore(path={self._path}, datasets={self.tracks}, id={self.id[:8]})"
 
-    def _parse_sampleinfo(self, sampleinfo) -> npt.NDArray | None:
-        if sampleinfo is None:
+    def _parse_sampleset_info(self, sampleset_info) -> npt.NDArray | None:
+        if sampleset_info is None:
             return None
         df = pd.read_table(
-            sampleinfo,
+            sampleset_info,
             header=None,
             sep=r"\s+",
             index_col=0,
@@ -120,7 +120,9 @@ class DataStore:
         )
         missing = set(self.samples) - set(df.index)
         if missing:
-            raise ValueError(f"Samples missing from sampleinfo: {sorted(missing)[:5]}")
+            raise ValueError(
+                f"Samples missing from sampleset_info: {sorted(missing)[:5]}"
+            )
         return df.loc[self.samples, "sample_set"].to_numpy(dtype=str)
 
     @functools.cached_property
@@ -134,14 +136,14 @@ class DataStore:
                 f"v{config.SCHEMA_VERSION}",
                 str(p),
                 str(stat.st_mtime_ns),
-                self._sampleinfo_hash(),  # None or hash of sampleinfo content
+                self._sampleset_info_hash(),  # None or hash of sampleset_info content
             ]
         ).encode()
         return hashlib.blake2b(payload, digest_size=16).hexdigest()
 
-    def _sampleinfo_hash(self) -> str:
-        if not self._has_sampleinfo:
-            return "no-sampleinfo"
+    def _sampleset_info_hash(self) -> str:
+        if not self._has_sampleset_info:
+            return "no-sampleset_info"
         return hashlib.blake2b(
             self._user_sample_set_membership.tobytes(),
             digest_size=8,
@@ -198,7 +200,7 @@ class DataStore:
 
     @functools.cached_property
     def sample_set_membership(self) -> npt.NDArray:
-        if self._has_sampleinfo:
+        if self._has_sampleset_info:
             return self._user_sample_set_membership
         return self.default_sample_set_membership
 
@@ -225,7 +227,7 @@ class DataStore:
 
     @property
     def has_sample_sets(self) -> bool:
-        return self._has_sampleinfo
+        return self._has_sampleset_info
 
     @functools.cached_property
     def sample_set_colors(self) -> dict[str, str]:
