@@ -14,7 +14,9 @@ def d1() -> xr.DataTree:
     contigs = np.array(["chr1", "chr2"])
     offsets = np.array([0, 2, 3])
     samples = np.array(["s1", "s2", "s3"])
-    return _helpers.make_datatree(values, contigs, offsets, samples)
+    return _helpers.make_track_group(
+        values=values, contigs=contigs, offsets=offsets, column_values=samples
+    )
 
 
 def test_track_init(d1):
