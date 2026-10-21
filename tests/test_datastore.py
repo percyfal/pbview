@@ -9,6 +9,32 @@ import zarr
 from pbview.model.datastore import DataStore
 from pbview.model.track import Track
 
+INIT_SCENARIOS = {
+    "raw": {},
+    "with_default_sample_set": {"with_default_sample_set": True},
+    "with_sample_sets": {"sample_sets": True},
+    "with_sum": {"with_sum": True},
+    "with_sum_and_sample_sets": {"with_sum": True, "sample_sets": True},
+    "with_missing": {"with_missing": True},
+    "with_missing_and_sample_sets": {"with_missing": True, "sample_sets": True},
+    "with_sum_and_missing": {"with_sum": True, "with_missing": True},
+    "with_all": {"with_sum": True, "with_missing": True, "sample_sets": True},
+}
+
+
+@pytest.mark.parametrize("scenario", INIT_SCENARIOS)
+def test_datastore_init(make_datastore, scenario, sample_sets):
+    kwargs = INIT_SCENARIOS[scenario]
+    if kwargs.get("sample_sets"):
+        kwargs["sample_sets"] = sample_sets
+    ds = make_datastore(**kwargs)
+    assert isinstance(ds, DataStore)
+    assert isinstance(ds.tracks, dict)
+    assert len(ds.tracks) > 0
+    for track_name, track in ds.tracks.items():
+        assert isinstance(track_name, str)
+        assert isinstance(track, Track)
+
 
 @pytest.fixture
 def zarr_group(tmpdir_factory):

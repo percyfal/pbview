@@ -158,7 +158,15 @@ class DataStore:
     @functools.cached_property
     def samples(self) -> npt.NDArray:
         """All samples in the dataset"""
-        return np.asarray(self._store_coords["sample"].values)
+        # FIXME: temporary hack to avoid KeyError when the sample
+        # dimension is not present in the coordinates
+        try:
+            return np.asarray(self._store_coords["sample"].values)
+        except KeyError:
+            logger.warning(
+                "Sample dimension not found in coordinates; returning empty array."
+            )
+            return np.asarray([])
 
     @functools.cached_property
     def n_samples(self) -> int:
