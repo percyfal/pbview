@@ -3,8 +3,11 @@ import hashlib
 import xarray as xr
 
 
-def _datatree_id(dt: xr.DataTree, schema_version: int) -> str:
+def _datatree_id(dt: xr.DataTree | None, schema_version: int) -> str:
     h = hashlib.blake2b(digest_size=16)
+    if dt is None:
+        h.update(b"null")
+        return h.hexdigest()
     for node in dt.subtree:
         h.update(node.path.encode())
         for name, var in sorted(node.ds.variables.items()):
