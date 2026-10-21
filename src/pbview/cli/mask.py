@@ -20,7 +20,7 @@ from ._common import (
     memory_limit_option,
     path_argument,
     progress_option,
-    sampleinfo_option,
+    sampleset_info_option,
     sampleset_name_option,
     set_threads,
     threads_option,
@@ -66,7 +66,7 @@ def mask() -> None:
 @track_name_option()
 @log_level()
 @progress_option()
-@sampleinfo_option()
+@sampleset_info_option()
 @use_dask_option()
 @set_threads
 def generate(
@@ -75,7 +75,7 @@ def generate(
     output: Path | str,
     track_name: str,
     progress: bool,
-    sampleinfo: str | None = None,
+    sampleset_info: str | None = None,
 ) -> None:
     """Generate accessible sites from the pbzarr store.
 
@@ -88,7 +88,7 @@ def generate(
     output = output or Path(path).with_name(f"{Path(path).name}_mask")
     _generate.generate_mask(
         path,
-        sampleinfo=sampleinfo,
+        sampleset_info=sampleset_info,
         threshold=threshold,
         output=output,
         track_name=track_name,

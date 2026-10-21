@@ -28,8 +28,8 @@ def test_track_init(d1):
 
 
 @pytest.fixture()
-def ds(store, sampleinfo):
-    return DataStore(path=store, sampleinfo=sampleinfo)
+def ds(store, sampleset_info):
+    return DataStore(path=store, sampleset_info=sampleset_info)
 
 
 @pytest.fixture()

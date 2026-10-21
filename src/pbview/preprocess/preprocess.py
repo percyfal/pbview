@@ -17,7 +17,7 @@ def preprocess(
     track: str = "depth",
     progress: bool = True,
     chunk_size: int = 1_000_000,
-    sampleinfo: Path | str | None = None,
+    sampleset_info: Path | str | None = None,
     missing_cutoff: int = 3,
     preprocess_sum: bool = True,
     preprocess_missingness: bool = True,
@@ -28,7 +28,7 @@ def preprocess(
     """
     show_progress = ProgressBar() if progress else nullcontext()
 
-    ds = DataStore(path=path, sampleinfo=sampleinfo)
+    ds = DataStore(path=path, sampleset_info=sampleset_info)
 
     if preprocess_sum:
         ds_sum = compute_track_sum(track=ds.tracks[track], base_coord=ds.base_coord)
@@ -56,12 +56,12 @@ def compute_thresholds(
     track_name: str = "depth",
     progress: bool = True,
     chunk_size: int = 1_000_000,
-    sampleinfo: Path | str | None = None,
+    sampleset_info: Path | str | None = None,
     missing_cutoff: int = 3,
 ) -> None:
     """Compute default thresholds for sum data"""
     show_progress = ProgressBar() if progress else nullcontext()
-    ds = DataStore(path=path, sampleinfo=sampleinfo)
+    ds = DataStore(path=path, sampleset_info=sampleset_info)
 
     defaults = compute_threshold_defaults(ds, track_name)
 

@@ -10,7 +10,7 @@ from ._common import (
     log_filter_option,
     path_argument,
     port_option,
-    sampleinfo_option,
+    sampleset_info_option,
     setup_dask_scheduler,
     show_option,
     threads_option,
@@ -22,7 +22,7 @@ from ._common import (
 @click.command()
 @path_argument(dir_okay=True, nargs=1)
 @annotation_file_option()
-@sampleinfo_option()
+@sampleset_info_option()
 @port_option()
 @dask_port_option()
 @show_option()
@@ -39,7 +39,7 @@ def serve(
     path,
     port,
     annotation_file,
-    sampleinfo,
+    sampleset_info,
     show,
     servable,
     chunk_size,
@@ -52,7 +52,7 @@ def serve(
         port=port,
         show=show,
         servable=servable,
-        sampleinfo=sampleinfo,
+        sampleset_info=sampleset_info,
         verbose=False,
         chunk_size=chunk_size,
         annotation_file=annotation_file,

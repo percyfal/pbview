@@ -39,11 +39,9 @@ def d4_argument(nargs: int = 1) -> Callable[[FC], FC]:
     return click.argument("d4files", type=click.Path(exists=True), nargs=nargs)
 
 
-# FIXME: rename throughout to sampleset_info: this is about grouping
-# samples into sample sets
-def sampleinfo_option() -> Callable[[FC], FC]:
+def sampleset_info_option() -> Callable[[FC], FC]:
     return click.option(
-        "--sampleinfo",
+        "--sampleset_info",
         type=click.Path(exists=True, dir_okay=False),
         help=(
             "2-column tab-separated sample info file with sample to population mapping"
