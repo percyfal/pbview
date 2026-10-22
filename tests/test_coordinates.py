@@ -1,10 +1,120 @@
 from dataclasses import dataclass
 
+import _helpers
 import numpy as np
 import pytest
 
-from pbview.model.coordinates import Coordinates
+from pbview.model.coordinates import ColumnSelection, Coordinates, SpatialSelection
 from pbview.model.datastore import DataStore
+
+
+@pytest.fixture
+def data():
+    values = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    contigs = np.array(["chr1", "chr2"])
+    offsets = np.array([0, 2, 3])
+    samples = np.array(["s1", "s2", "s3"])
+    return _helpers.make_track_group(
+        values=values, contigs=contigs, offsets=offsets, column_values=samples
+    )
+
+
+@pytest.fixture
+def coords(raw_ds):
+    return Coordinates(raw_ds)
+
+
+@pytest.mark.parametrize("position_ranges", [None, [], ()])
+def test_empty_spatial_selection_is_noop(data, position_ranges):
+    sel = SpatialSelection(position_ranges=position_ranges)
+    ret = sel.apply(data)
+    assert ret == data
+
+
+@pytest.mark.parametrize("position_ranges", [None, [], ()])
+def test_empty_spatial_selection_on_subset_is_noop(data, position_ranges):
+    data = data.copy()
+    data = data.sel(position=slice(0, 2))
+    sel = SpatialSelection(position_ranges=position_ranges)
+    ret = sel.apply(data)
+    assert ret == data
+
+
+def test_spatial_selection_position_ranges(data):
+    sel = SpatialSelection(position_ranges=[(0, 1), (2, 3)])
+    ret = sel.apply(data)
+    # Position is not a coordinate; the returned values will always
+    # start from 0
+    assert len(ret.position) == 2
+    # Contigs are untouched
+    assert ret.coords["contigs"].values.tolist() == ["chr1", "chr2"]
+
+
+@pytest.mark.parametrize("selected", [None, [], ()])
+def test_empty_column_selection_is_noop(data, selected):
+    sel = ColumnSelection(column_dim="sample", selected=selected)
+    ret = sel.apply(data)
+    assert ret == data
+
+
+@pytest.mark.parametrize("selected", [None, [], ()])
+def test_empty_column_selection_on_subset_is_noop(data, selected):
+    data = data.copy()
+    data = data.sel(sample=["s1"])
+    ret = ColumnSelection(column_dim="sample", selected=selected).apply(data)
+    assert ret == data
+
+
+def test_column_selection_selected(data):
+    sel = ColumnSelection(column_dim="sample", selected=["s1", "s3"])
+    ret = sel.apply(data)
+    assert ret.coords["sample"].values.tolist() == ["s1", "s3"]
+
+
+@pytest.mark.skip("Coordinates will not know about sample sets going forward")
+@pytest.mark.parametrize(
+    "kw,expected",
+    [
+        ({}, 0),
+        ({"with_all": True}, 1),
+        ({"with_all": True, "sample_sets": _helpers.sample_sets()}, 3),
+    ],
+)
+def test_coordinates_init(make_datastore, kw, expected):
+    ds = make_datastore(**kw)
+    coords = Coordinates(ds)
+    assert coords.n_sample_sets == expected
+
+
+def test_coordinates_contig_slices(coords):
+    slices = coords.contig_slices(["chr2"])
+    assert slices == [(10, 18)]
+    slices = coords.contig_slices(["chr1", "chr3"])
+    assert slices == [(0, 10), (18, 24)]
+    slices = coords.contig_slices(["chr2", "chr3"])
+    assert slices == [(10, 24)]
+
+
+def test_coordinates_with_contigs(coords):
+    ret = coords.with_contigs_new(["chr1", "chr2"])
+    assert ret.spatial.position_ranges == [(0, 18)]
+
+
+def test_coordinates_with_contigs_unknown_raises(coords):
+    with pytest.raises(ValueError):
+        coords.with_contigs_new(["chr1", "chr4"])
+
+
+def test_coordinates_with_samples(coords):
+    pass
+
+
+def test_coordinates_with_sample_sets(coords):
+    pass
+
+
+def test_coordinates_with_length_filter(coords):
+    pass
 
 
 @dataclass(frozen=True)
