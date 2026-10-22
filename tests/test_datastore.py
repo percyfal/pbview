@@ -34,6 +34,8 @@ def test_datastore_init(make_datastore, scenario, sample_sets):
     for track_name, track in ds.tracks.items():
         assert isinstance(track_name, str)
         assert isinstance(track, Track)
+    assert len(ds.genome) == 24
+    assert len(ds.genome.contigs) == 3
 
 
 @pytest.fixture

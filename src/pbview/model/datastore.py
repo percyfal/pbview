@@ -24,7 +24,7 @@ import zarr
 
 from pbview import config
 from pbview.logging import app_logger as logger
-from pbview.model.coordinates import Coordinates
+from pbview.model.coordinates import Coordinates, Genome
 from pbview.model.track import Track
 
 xr.set_options(display_expand_attrs=False)
@@ -86,6 +86,11 @@ class DataStore:
         self._active_track = list(self.store.keys())[0]
         # FIXME: temporary solution to retrieving the coordinates
         self._store_coords = self.store[self._active_track].coords
+
+        self._genome = Genome(
+            contigs=self.store[self._active_track].contigs.values,
+            offsets=self.store[self._active_track].offsets.values,
+        )
 
         self._has_sampleset_info = sampleset_info is not None
         self._user_sample_set_membership = self._parse_sampleset_info(sampleset_info)
@@ -156,6 +161,10 @@ class DataStore:
     @property
     def data(self) -> str:
         return self.store
+
+    @property
+    def genome(self) -> str:
+        return self._genome
 
     @functools.cached_property
     def samples(self) -> npt.NDArray:
