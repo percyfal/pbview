@@ -11,7 +11,7 @@ __date__ = "2026-09-17"
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from functools import cached_property
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 import numpy.typing as npt
@@ -24,6 +24,87 @@ if TYPE_CHECKING:
 
 
 xr.set_options(display_expand_attrs=False)
+
+
+class Selection(Protocol):
+    """A protocol for selection over an axis of a track."""
+
+    def apply(self, data: xr.Dataset) -> xr.Dataset: ...
+
+
+@dataclass(frozen=True)
+class SpatialSelection:
+    """A selection over the spatial axis of a track.
+
+    The spatial axis (contig, position) is a global coordinate system,
+    meaning that the same selection can be applied to any track.
+
+    Only the position range can be used for selection.
+
+    """
+
+    position_ranges: list[tuple[int, int]] | None = None
+
+    def __post_init__(self):
+        if self.position_ranges is not None and len(self.position_ranges) == 0:
+            object.__setattr__(self, "position_ranges", None)
+
+    def apply(self, data: xr.Dataset) -> xr.Dataset:
+        """Apply the selection to the given dataset."""
+        if self.position_ranges is not None:
+            parts = [
+                data.isel(position=slice(start, end))
+                for (start, end) in self.position_ranges
+            ]
+            data = xr.concat(parts, dim="position")
+        return data
+
+
+@dataclass(frozen=True)
+class ColumnSelection:
+    """A selection over the column axis of a track."""
+
+    column_dim: str
+    selected: tuple[str, ...] | None = None
+
+    def __post_init__(self):
+        if self.selected is not None and len(self.selected) == 0:
+            object.__setattr__(self, "selected", None)
+
+    def apply(self, data: xr.Dataset):
+        """Apply the selection to the given dataset."""
+        if self.selected is None:
+            return data
+        return data.sel({self.column_dim: list(self.selected)})
+
+    def project_to(
+        self, target_dim: str, grouping: xr.DataArray | None
+    ) -> "ColumnSelection":
+        """Project a selection to a target dimension using a grouping.
+
+        The grouping maps values from the current column dimension to
+        the target dimension.
+        """
+        if self.selected is None:
+            return ColumnSelection(column_dim=target_dim, selected=None)
+
+        if target_dim == self.column_dim:
+            return self
+
+        if grouping is None:
+            return ColumnSelection(column_dim=target_dim, selected=None)
+
+        if self.column_dim in grouping.dims and target_dim in grouping.dims:
+            # Map selected values to target dimension using grouping
+            selected_indices = grouping.sel({self.column_dim: list(self.selected)}).any(
+                dim=self.column_dim
+            )
+            projected_values = grouping.coords[target_dim].values[selected_indices]
+            return ColumnSelection(
+                column_dim=target_dim, selected=tuple(projected_values)
+            )
+
+        return ColumnSelection(column_dim=target_dim, selected=None)
 
 
 @dataclass(frozen=True)
@@ -47,6 +128,8 @@ class Coordinates:
     """
 
     datastore: DataStore
+    spatial: SpatialSelection = SpatialSelection()
+    column: dict[str, ColumnSelection] = ()
     sample_selected: npt.NDArray[np.bool_] | None = None
     contig_selected: npt.NDArray[np.bool_] | None = None
 
@@ -150,6 +233,16 @@ class Coordinates:
             & self.contig_selected
         )
         return self._replace(contig_selected=keep)
+
+    def with_contigs_new(self, contigs: Iterable[str] | None = None) -> "Coordinates":
+        if contigs is None:
+            slices = self.contig_slices(self.contigs_all.tolist())
+        else:
+            unknown = set(contigs) - set(self.contigs_all.tolist())
+            if unknown:
+                raise ValueError(f"Unknown contigs: {sorted(unknown)}")
+            slices = self.contig_slices(contigs)
+        return replace(self, spatial=replace(self.spatial, position_ranges=slices))
 
     def with_contigs(
         self,
@@ -264,15 +357,19 @@ class Coordinates:
         """Original-vector indices of currently selected contigs."""
         return np.flatnonzero(self.contig_selected).astype(np.int64)
 
-    def contig_slices(self) -> list[np.array[int]] | None:
+    def contig_slices(self, contigs: list | None = None) -> list[np.array[int]] | None:
         """Return a list of reduced slices mapped to position coordinates."""
-        if self.contig_indices.size == 0:
-            return []
-        return (
+        if contigs is None:
+            if self.contig_indices.size == 0:
+                return []
+            contig_indices = self.contig_indices
+        else:
+            contig_indices = np.searchsorted(self.contigs_all, contigs)
+        slices = (
             pr.PyRanges(
                 {
-                    "Start": self.offsets[:-1][self.contig_indices],
-                    "End": self.offsets[1:][self.contig_indices],
+                    "Start": self.offsets[:-1][contig_indices],
+                    "End": self.offsets[1:][contig_indices],
                     "Chromosome": "Placeholder",
                 }
             )
@@ -280,6 +377,7 @@ class Coordinates:
             .to_numpy()
             .tolist()
         )
+        return list(map(tuple, slices))
 
     # @property
     # def contig_selected(self):

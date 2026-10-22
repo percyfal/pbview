@@ -63,6 +63,7 @@ def make_datastore(tmp_path, tiny_datatree):
         with_sum: bool = False,
         with_missing: bool = False,
         with_default_sample_set: bool = False,
+        with_all: bool = False,
         sample_sets: xr.DataArray | None = None,
         track_name: str = "depth",
     ):
@@ -70,6 +71,8 @@ def make_datastore(tmp_path, tiny_datatree):
             raise ValueError(
                 "Default sample set is implicit when sample_sets is provided."
             )
+        if with_all:
+            with_sum = with_missing = with_default_sample_set = True
         state = ["raw"] if (not with_sum and not with_missing) else ["preprocessed"]
         state += ["with_sum"] if with_sum else []
         state += ["with_missing"] if with_missing else []
