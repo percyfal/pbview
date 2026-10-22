@@ -39,22 +39,25 @@ class SpatialSelection:
     The spatial axis (contig, position) is a global coordinate system,
     meaning that the same selection can be applied to any track.
 
-    Only the position range can be used for selection.
+    Only the position range can be directly used for selection.
 
     """
 
-    position_ranges: list[tuple[int, int]] | None = None
+    contigs: list[str] | None = None
+    position_intervals: list[tuple[int, int]] | None = None
 
     def __post_init__(self):
-        if self.position_ranges is not None and len(self.position_ranges) == 0:
-            object.__setattr__(self, "position_ranges", None)
+        if self.position_intervals is not None and len(self.position_intervals) == 0:
+            object.__setattr__(self, "position_intervals", None)
+        if self.contigs is not None and len(self.contigs) == 0:
+            object.__setattr__(self, "contigs", None)
 
     def apply(self, data: xr.Dataset) -> xr.Dataset:
         """Apply the selection to the given dataset."""
-        if self.position_ranges is not None:
+        if self.position_intervals is not None:
             parts = [
                 data.isel(position=slice(start, end))
-                for (start, end) in self.position_ranges
+                for (start, end) in self.position_intervals
             ]
             data = xr.concat(parts, dim="position")
         return data
@@ -105,6 +108,98 @@ class ColumnSelection:
             )
 
         return ColumnSelection(column_dim=target_dim, selected=None)
+
+
+@dataclass(frozen=True)
+class Genome:
+    contigs: tuple[str, ...]
+    offsets: tuple[int, ...]
+
+    def __post_init__(self):
+        if len(self.contigs) + 1 != len(self.offsets):
+            raise ValueError(
+                "Offsets must be one longer than contigs, got "
+                f"{len(self.contigs)} contigs and {len(self.offsets)} offsets"
+            )
+
+    def __len__(self) -> int:
+        return sum(e - s for s, e in self.contig_slices(self.contigs))
+
+    def contig_indices(self, contigs: list[str] | None = None):
+        if contigs is None:
+            return np.arange(len(self.contigs))
+        return np.searchsorted(self.contigs, contigs)
+
+    def span(self, contig: str) -> tuple[int, int]:
+        """Return the start and end positions for a given contig."""
+        idx = self.contigs.index(contig)
+        return self.offsets[idx], self.offsets[idx + 1]
+
+    def resolve(self, sel: SpatialSelection) -> "PositionIntervals":
+        """Resolve selection ranges"""
+        contigs = sel.contigs or self.contigs
+        spans = self.contig_slices(contigs)
+        if sel.position_intervals is not None:
+            # This should *reduce* the
+            # Merge the position ranges
+            x = PositionIntervals(sel.position_intervals).as_pyranges()
+            y = PositionIntervals(spans).as_pyranges()
+            spans = (
+                x.intersect_overlaps(y)
+                .merge_overlaps(slack=1)[["Start", "End"]]
+                .to_numpy()
+                .tolist()
+            )
+            spans = tuple(map(tuple, spans))
+        return PositionIntervals(tuple((s, e) for s, e in spans if s < e))
+
+    def as_pyranges(self, contigs: list[str] | None = None) -> pr.PyRanges:
+        contig_indices = self.contig_indices(contigs)
+        return pr.PyRanges(
+            {
+                "Start": np.array(self.offsets[:-1])[contig_indices],
+                "End": np.array(self.offsets[1:])[contig_indices],
+                "Chromosome": np.array(self.contigs)[contig_indices],
+            }
+        )
+
+    def contig_slices(self, contigs: list[str] | None = None) -> tuple[tuple[int, int]]:
+        data = self.as_pyranges(contigs)
+        slices = data.merge_overlaps(slack=1)[["Start", "End"]].to_numpy().tolist()
+        return tuple(map(tuple, slices))
+
+
+@dataclass(frozen=True)
+class PositionIntervals:
+    """A collection of position intervals, represented as a tuple of (start, end) pairs.
+
+    PositionIntervals represent intervals on the position axis of a
+    track. They know nothing of contig space, and are simply a
+    collection of (start, end) pairs. They can be used to select data
+    from a track, and can be converted to a PyRanges object for
+    further manipulation.
+
+    """
+
+    intervals: tuple[tuple[int, int], ...]
+
+    def __len__(self) -> int:
+        if len(self.intervals) == 0:
+            return 0
+        return sum([e - s for s, e in self.intervals])
+
+    def apply(self, data: xr.Dataset) -> xr.Dataset:
+        parts = [data.isel(position=slice(s, e)) for s, e in self.intervals]
+        return parts[0] if len(parts) == 1 else xr.concat(parts, dim="position")
+
+    def as_pyranges(self) -> pr.PyRanges:
+        return pr.PyRanges(
+            {
+                "Start": [s for s, _ in self.intervals],
+                "End": [e for _, e in self.intervals],
+                "Chromosome": "Placeholder",
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -242,7 +337,7 @@ class Coordinates:
             if unknown:
                 raise ValueError(f"Unknown contigs: {sorted(unknown)}")
             slices = self.contig_slices(contigs)
-        return replace(self, spatial=replace(self.spatial, position_ranges=slices))
+        return replace(self, spatial=replace(self.spatial, position_intervals=slices))
 
     def with_contigs(
         self,

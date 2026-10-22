@@ -2,9 +2,16 @@ from dataclasses import dataclass
 
 import _helpers
 import numpy as np
+import pyranges1 as pr
 import pytest
 
-from pbview.model.coordinates import ColumnSelection, Coordinates, SpatialSelection
+from pbview.model.coordinates import (
+    ColumnSelection,
+    Coordinates,
+    Genome,
+    PositionIntervals,
+    SpatialSelection,
+)
 from pbview.model.datastore import DataStore
 
 
@@ -24,30 +31,92 @@ def coords(raw_ds):
     return Coordinates(raw_ds)
 
 
-@pytest.mark.parametrize("position_ranges", [None, [], ()])
-def test_empty_spatial_selection_is_noop(data, position_ranges):
-    sel = SpatialSelection(position_ranges=position_ranges)
+@pytest.mark.parametrize(
+    "position_intervals,expected",
+    [
+        (((0, 100), (200, 300)), 200),
+        ((()), 0),
+    ],
+)
+def test_position_intervals(position_intervals, expected):
+    pi = PositionIntervals(position_intervals)
+    assert len(pi) == expected
+
+
+@pytest.mark.parametrize(
+    "position_intervals,expected",
+    [
+        (((0, 100), (200, 300)), 200),
+        ((()), 0),
+    ],
+)
+def test_position_intervals_as_pyranges(position_intervals, expected):
+    pi = PositionIntervals(position_intervals)
+    ret = pi.as_pyranges()
+    assert isinstance(ret, pr.PyRanges)
+    assert ret.length == expected
+
+
+def test_genome_init():
+    genome = Genome(contigs=("chr1", "chr2"), offsets=(0, 1000, 1800))
+    assert genome.contigs == ("chr1", "chr2")
+    assert genome.offsets == (0, 1000, 1800)
+    assert len(genome) == 1800
+
+
+def test_genome_init_raises():
+    with pytest.raises(ValueError):
+        _ = Genome(contigs=("chr1", "chr2"), offsets=(0, 1000))
+
+
+def test_genome_as_pyranges():
+    genome = Genome(contigs=("chr1", "chr2"), offsets=(0, 1000, 1800))
+    ret = genome.as_pyranges()
+    assert isinstance(ret, pr.PyRanges)
+    assert ret.length == 1800
+
+
+@pytest.mark.parametrize("position_intervals", [None, [], ()])
+def test_empty_spatial_selection_is_noop(data, position_intervals):
+    sel = SpatialSelection(position_intervals=position_intervals)
     ret = sel.apply(data)
     assert ret == data
 
 
-@pytest.mark.parametrize("position_ranges", [None, [], ()])
-def test_empty_spatial_selection_on_subset_is_noop(data, position_ranges):
+@pytest.mark.parametrize("position_intervals", [None, [], ()])
+def test_empty_spatial_selection_on_subset_is_noop(data, position_intervals):
     data = data.copy()
     data = data.sel(position=slice(0, 2))
-    sel = SpatialSelection(position_ranges=position_ranges)
+    sel = SpatialSelection(position_intervals=position_intervals)
     ret = sel.apply(data)
     assert ret == data
 
 
-def test_spatial_selection_position_ranges(data):
-    sel = SpatialSelection(position_ranges=[(0, 1), (2, 3)])
+def test_spatial_selection_position_intervals(data):
+    sel = SpatialSelection(position_intervals=[(0, 1), (2, 3)])
     ret = sel.apply(data)
     # Position is not a coordinate; the returned values will always
     # start from 0
     assert len(ret.position) == 2
     # Contigs are untouched
     assert ret.coords["contigs"].values.tolist() == ["chr1", "chr2"]
+
+
+@pytest.mark.parametrize(
+    "kw,expected",
+    [
+        ({"position_intervals": ((200, 600),)}, 400),
+        ({"position_intervals": ((200, 600), (1200, 1400))}, 600),
+        ({"position_intervals": ((200, 600),), "contigs": ["chr2"]}, 0),
+        ({"position_intervals": ((200, 600),), "contigs": ["chr1", "chr2"]}, 400),
+        ({"position_intervals": ((200, 600), (1200, 1400)), "contigs": ["chr2"]}, 200),
+    ],
+)
+def test_genome_resolve_spatial_selection(kw, expected):
+    genome = Genome(contigs=("chr1", "chr2", "chr3"), offsets=(0, 1000, 1800, 2700))
+    sel = SpatialSelection(**kw)
+    pi = genome.resolve(sel)
+    assert len(pi) == expected
 
 
 @pytest.mark.parametrize("selected", [None, [], ()])
@@ -97,7 +166,7 @@ def test_coordinates_contig_slices(coords):
 
 def test_coordinates_with_contigs(coords):
     ret = coords.with_contigs_new(["chr1", "chr2"])
-    assert ret.spatial.position_ranges == [(0, 18)]
+    assert ret.spatial.position_intervals == [(0, 18)]
 
 
 def test_coordinates_with_contigs_unknown_raises(coords):
