@@ -119,6 +119,17 @@ def test_genome_resolve_spatial_selection(kw, expected):
     assert len(pi) == expected
 
 
+def test_genome_resolve_intervals():
+    genome = Genome(contigs=("chr1", "chr2", "chr3"), offsets=(0, 1000, 1800, 2700))
+    sel = SpatialSelection(position_intervals=((200, 600), (1200, 1900)))
+    pi = genome.resolve(sel)
+    x = genome.resolve_intervals(pi)
+    assert list(x["Chromosome"].values) == ["chr1", "chr2", "chr3"]
+    assert x.iloc[0].tolist()[0:2] == [200, 600]
+    assert x.iloc[1].tolist()[0:2] == [1200, 1800]
+    assert x.iloc[2].tolist()[0:2] == [1800, 1900]
+
+
 @pytest.mark.parametrize("selected", [None, [], ()])
 def test_empty_column_selection_is_noop(data, selected):
     sel = ColumnSelection(column_dim="sample", selected=selected)

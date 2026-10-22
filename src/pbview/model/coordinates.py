@@ -168,6 +168,22 @@ class Genome:
         slices = data.merge_overlaps(slack=1)[["Start", "End"]].to_numpy().tolist()
         return tuple(map(tuple, slices))
 
+    def resolve_intervals(self, position_intervals: PositionIntervals) -> pr.PyRanges:
+        """Convert position intervals to genome space including contig information.
+
+        Returns:
+            py.PyRanges: object with contig information assigned to
+                intervals in genome space (all contigs start from
+                position 0)
+        """
+        g = self.as_pyranges()
+        g["OriginalChromosome"] = g["Chromosome"].copy()
+        g["Chromosome"] = "Placeholder"
+        g = g.intersect_overlaps(position_intervals.as_pyranges())
+        g["Chromosome"] = g["OriginalChromosome"]
+        g = g.drop(["OriginalChromosome"], axis=1)
+        return g
+
 
 @dataclass(frozen=True)
 class PositionIntervals:
