@@ -186,7 +186,7 @@ class DataStore:
     @functools.cached_property
     def contigs(self) -> npt.NDArray:
         """All contigs in the dataset"""
-        return np.asarray(self._store_coords["contigs"].values)
+        return np.asarray(self._genome.contigs)
 
     @functools.cached_property
     def n_contigs(self) -> int:
@@ -195,7 +195,7 @@ class DataStore:
     @functools.cached_property
     def offsets(self) -> npt.NDArray:
         """Contig offsets"""
-        return np.asarray(self._store_coords["offsets"].values)
+        return np.asarray(self._genome.offsets)
 
     @functools.cached_property
     def default_sample_set_name(self) -> str:
