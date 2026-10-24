@@ -74,3 +74,17 @@ def test_datastore(store):
     for track_name, track in ds.tracks.items():
         assert isinstance(track_name, str)
         assert isinstance(track, Track)
+
+
+def test_datastore_genome_coords(raw_ds):
+    assert list(raw_ds.contigs) == [
+        "chr1",
+        "chr2",
+        "chr3",
+    ]
+    assert list(raw_ds.offsets) == [
+        0,
+        10,
+        18,
+        24,
+    ]
