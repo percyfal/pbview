@@ -23,11 +23,12 @@ INIT_SCENARIOS = {
 
 
 @pytest.mark.parametrize("scenario", INIT_SCENARIOS)
-def test_datastore_init(make_datastore, scenario, sample_sets):
+def test_datastore_init(make_datastore_path, scenario, sample_sets):
     kwargs = INIT_SCENARIOS[scenario]
     if kwargs.get("sample_sets"):
         kwargs["sample_sets"] = sample_sets
-    ds = make_datastore(**kwargs)
+    path = make_datastore_path(**kwargs)
+    ds = DataStore(path)
     assert isinstance(ds, DataStore)
     assert isinstance(ds.tracks, dict)
     assert len(ds.tracks) > 0
@@ -62,18 +63,6 @@ def test_empty_store(tmpdir_factory):
 def test_generic_zarr_store(zarr_group):
     with pytest.raises(pbzarr.PbzError):
         DataStore(path=zarr_group)
-
-
-# FIXME: parameterize on sampleset_info
-def test_datastore(store):
-    ds = DataStore(path=store)
-    assert isinstance(ds, DataStore)
-    assert ds._path == Path(store)
-    assert isinstance(ds.tracks, dict)
-    assert len(ds.tracks) > 0
-    for track_name, track in ds.tracks.items():
-        assert isinstance(track_name, str)
-        assert isinstance(track, Track)
 
 
 def test_datastore_genome_coords(raw_ds):
