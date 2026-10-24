@@ -56,8 +56,8 @@ def make_datatree(tiny_datatree):
 
 
 @pytest.fixture
-def make_datastore(tmp_path, tiny_datatree):
-    """Build datastore under different settings"""
+def make_datastore_path(tmp_path, tiny_datatree):
+    """Build datastore path under different settings"""
 
     def _make(
         with_sum: bool = False,
@@ -102,19 +102,29 @@ def make_datastore(tmp_path, tiny_datatree):
                 _helpers.attach_default_sample_set(tree)
             _helpers.attach_missingness(tree)
         tree.to_zarr(path)
-        return DataStore(path)
+        return path
 
     return _make
 
 
 @pytest.fixture
-def raw_ds(make_datastore):
-    return make_datastore()
+def datastore(make_datastore_path):
+    path = make_datastore_path()
+    return DataStore(path)
 
 
 @pytest.fixture
-def full_ds(make_datastore, sample_sets):
-    return make_datastore(with_sum=True, with_missing=True, sample_sets=sample_sets)
+def raw_ds(make_datastore_path):
+    path = make_datastore_path()
+    return DataStore(path)
+
+
+@pytest.fixture
+def full_ds(make_datastore_path, sample_sets):
+    path = make_datastore_path(
+        with_sum=True, with_missing=True, sample_sets=sample_sets
+    )
+    return DataStore(path)
 
 
 def pytest_configure(config):
