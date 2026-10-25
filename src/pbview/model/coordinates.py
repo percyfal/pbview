@@ -9,9 +9,9 @@ __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
 from collections.abc import Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -22,17 +22,17 @@ import xarray as xr
 if TYPE_CHECKING:
     from .datastore import DataStore
 
+from pbview._compat import _warn_shim
 
 xr.set_options(display_expand_attrs=False)
 
 
-# FIXME: spatial selections need genome offsets so apply cannot work.
-# Therefore, this Protocol is not really useful since only
-# ColumnSelection uses apply.
-class Selection(Protocol):
-    """A protocol for selection over an axis of a track."""
-
-    def apply(self, data: xr.Dataset) -> xr.Dataset: ...
+def _normalize_labels(labels) -> tuple[str, ...] | None:
+    """User-facing normalization: None or empty -> None (no filter)."""
+    if labels is None:
+        return None
+    labels = tuple(labels)
+    return labels or None
 
 
 @dataclass(frozen=True)
@@ -42,29 +42,19 @@ class SpatialSelection:
     The spatial axis (contig, position) is a global coordinate system,
     meaning that the same selection can be applied to any track.
 
-    Only the position range can be directly used for selection.
+    Only the contig range can be directly used for selection and will
+    be resolved for in the Genome class.
+
+    Future versions may support region-like selection of contig,
+    start, end tuples; resolution will still be handled by the Genome
+    class.
 
     """
 
     contigs: list[str] | None = None
-    position_intervals: list[tuple[int, int]] | None = None
 
     def __post_init__(self):
-        if self.position_intervals is not None and len(self.position_intervals) == 0:
-            object.__setattr__(self, "position_intervals", None)
-        if self.contigs is not None and len(self.contigs) == 0:
-            object.__setattr__(self, "contigs", None)
-
-    # FIXME: Remove in favor of resolve
-    def apply(self, data: xr.Dataset) -> xr.Dataset:
-        """Apply the selection to the given dataset."""
-        if self.position_intervals is not None:
-            parts = [
-                data.isel(position=slice(start, end))
-                for (start, end) in self.position_intervals
-            ]
-            data = xr.concat(parts, dim="position")
-        return data
+        object.__setattr__(self, "contigs", _normalize_labels(self.contigs))
 
 
 @dataclass(frozen=True)
@@ -120,19 +110,43 @@ class Genome:
     offsets: tuple[int, ...]
 
     def __post_init__(self):
+        object.__setattr__(self, "contigs", tuple(self.contigs))
+        object.__setattr__(self, "offsets", tuple(int(o) for o in self.offsets))
         if len(self.contigs) + 1 != len(self.offsets):
             raise ValueError(
                 "Offsets must be one longer than contigs, got "
                 f"{len(self.contigs)} contigs and {len(self.offsets)} offsets"
             )
 
-    def __len__(self) -> int:
-        return sum(e - s for s, e in self.contig_slices(self.contigs))
+    @property
+    def size(self):
+        """Size of genome in bp"""
+        return self.offsets[-1] - self.offsets[0]
+
+    @cached_property
+    def _contig_index(self) -> dict[str, int]:
+        return {c: i for i, c in enumerate(self.contigs)}
+
+    def _index(self, contig: str) -> int:
+        try:
+            return self.contigs.index(contig)
+        except ValueError:
+            raise KeyError(f"unknown contig {contig!r}")
 
     def contig_indices(self, contigs: list[str] | None = None):
         if contigs is None:
             return np.arange(len(self.contigs))
-        return np.searchsorted(self.contigs, contigs)
+        unknown = [c for c in contigs if c not in self._contig_index]
+        if unknown:
+            raise KeyError(f"unknown contigs {unknown}")
+        return np.array(sorted([self._contig_index[c] for c in contigs]), dtype=np.intp)
+
+    # FIXME: Is this function needed?
+    def resolve_contigs(self, spatial: SpatialSelection) -> tuple[str, ...]:
+        """Resolve contig names"""
+        if spatial.contigs is None:
+            return self.contigs
+        return tuple(self.contigs[i] for i in self.contig_indices(spatial.contigs))
 
     def span(self, contig: str) -> tuple[int, int]:
         """Return the start and end positions for a given contig."""
@@ -141,21 +155,11 @@ class Genome:
 
     def resolve(self, sel: SpatialSelection) -> "PositionIntervals":
         """Resolve selection ranges"""
-        contigs = sel.contigs or self.contigs
-        spans = self.contig_slices(contigs)
-        if sel.position_intervals is not None:
-            # This should *reduce* the
-            # Merge the position ranges
-            x = PositionIntervals(sel.position_intervals).as_pyranges()
-            y = PositionIntervals(spans).as_pyranges()
-            spans = (
-                x.intersect_overlaps(y)
-                .merge_overlaps(slack=1)[["Start", "End"]]
-                .to_numpy()
-                .tolist()
-            )
-            spans = tuple(map(tuple, spans))
-        return PositionIntervals(tuple((s, e) for s, e in spans if s < e))
+        idx = np.unique(self.contig_indices(sel.contigs))
+        offsets = np.asarray(self.offsets)
+        return PositionIntervals(
+            tuple(zip(offsets[idx].tolist(), offsets[idx + 1].tolist()))
+        )
 
     def as_pyranges(self, contigs: list[str] | None = None) -> pr.PyRanges:
         contig_indices = self.contig_indices(contigs)
@@ -167,8 +171,10 @@ class Genome:
             }
         )
 
-    def contig_slices(self, contigs: list[str] | None = None) -> tuple[tuple[int, int]]:
-        data = self.as_pyranges(contigs)
+    def contig_slices(
+        self, sel: SpatialSelection | None = None
+    ) -> tuple[tuple[int, int]]:
+        data = self.resolve(sel).as_pyranges()
         slices = data.merge_overlaps(slack=1)[["Start", "End"]].to_numpy().tolist()
         return tuple(map(tuple, slices))
 
@@ -247,22 +253,22 @@ class Coordinates:
     # hashing, and every with_* carries I/O state,
     datastore: DataStore
     spatial: SpatialSelection = SpatialSelection()
-    column: dict[str, ColumnSelection] = ()
-    sample_selected: npt.NDArray[np.bool_] | None = None
-    contig_selected: npt.NDArray[np.bool_] | None = None
+    column: dict[str, ColumnSelection] = field(default_factory=dict)
+    _sample_selected: npt.NDArray[np.bool_] | None = None
+    _contig_selected: npt.NDArray[np.bool_] | None = None
 
     def __post_init__(self):
         n_samples_all, n_contigs_all = self.n_samples_all, self.n_contigs_all
         object.__setattr__(
             self,
-            "sample_selected",
+            "_sample_selected",
             np.ones(n_samples_all, dtype=bool)
             if self.sample_selected is None
             else np.asarray(self.sample_selected, dtype=bool),
         )
         object.__setattr__(
             self,
-            "contig_selected",
+            "_contig_selected",
             np.ones(n_contigs_all, dtype=bool)
             if self.contig_selected is None
             else np.asarray(self.contig_selected, dtype=bool),
@@ -319,10 +325,10 @@ class Coordinates:
         """Return a new instance sharing raw data, with new selection arrays."""
         new = replace(
             self,
-            sample_selected=self.sample_selected
+            _sample_selected=self.sample_selected
             if sample_selected is None
             else np.asarray(sample_selected, dtype=bool),
-            contig_selected=self.contig_selected
+            _contig_selected=self.contig_selected
             if contig_selected is None
             else np.asarray(contig_selected, dtype=bool),
         )
@@ -352,33 +358,25 @@ class Coordinates:
         )
         return self._replace(contig_selected=keep)
 
-    def with_contigs_new(self, contigs: Iterable[str] | None = None) -> "Coordinates":
-        if contigs is None:
-            slices = self.contig_slices(self.contigs_all.tolist())
-        else:
-            unknown = set(contigs) - set(self.contigs_all.tolist())
-            if unknown:
-                raise ValueError(f"Unknown contigs: {sorted(unknown)}")
-            slices = self.contig_slices(contigs)
-        return replace(
-            self,
-            spatial=replace(self.spatial, position_intervals=slices, contigs=contigs),
-        )
-
     def with_contigs(
         self,
         contigs: Iterable[str] | None = None,
     ) -> "Coordinates":
-        """Keep only listed contigs. `None` resets the contig selection mask."""
-        if contigs is None:
-            return self._replace(contig_selected=np.ones_like(self.contig_selected))
-        unknown = set(contigs) - set(self.contigs_all.tolist())
-        if unknown:
-            raise ValueError(f"Unknown contigs: {sorted(unknown)}")
-        keep = (
-            np.isin(self.contigs_all, np.asarray(list(contigs))) & self.contig_selected
-        )
-        return self._replace(contig_selected=keep)
+        """Select contigs. None or empty means the whole genome."""
+        new = replace(self, spatial=replace(self.spatial, contigs=contigs))
+
+        # SHIM: keep legacy mask until readers use selected_contigs(genome)
+        if self.contig_selected is not None:
+            selected = new.spatial.contigs
+            if selected is not None:
+                unknown = set(selected) - set(self.contigs_all.tolist())
+                if unknown:
+                    raise ValueError(f"Unknown contigs: {sorted(unknown)}")
+                keep = np.isin(self.contigs_all, selected)
+            else:
+                keep = np.ones_like(self.contig_selected)
+            new = replace(new, _contig_selected=keep)
+        return new
 
     def with_all_contigs(
         self,
@@ -500,27 +498,33 @@ class Coordinates:
         )
         return list(map(tuple, slices))
 
-    # @property
-    # def contig_selected(self):
-    #     return self.contig_selected
+    @property
+    def contig_selected(self):
+        _warn_shim("Coordinates.contig_selected", "selected_contigs(genome)")
+        return self._contig_selected
 
     @property
     def contig_excluded(self):
         return ~self.contig_selected
 
-    # @property
-    # def sample_selected(self):
-    #     return self.sample_selected
+    @property
+    def sample_selected(self):
+        _warn_shim("Coordinates.sample_selected", "resolve(track)")
+        return self._sample_selected
 
     @property
     def sample_excluded(self):
         return ~self.sample_selected
 
-    # FIXME: Return self.spatial.contigs; if None, return
-    # self.datastore.contigs. Need claude input on this.
+    # FIXME: Return self.spatial.contigs to show *raw* user selection;
+    # if None, return self.datastore.contigs.
     @property
     def contigs(self):
         return self.contigs_all[self.contig_selected]
+
+    def selected_contigs(self, genome: Genome) -> tuple[str, ...]:
+        """Currently selected contigs"""
+        pass
 
     @property
     def n_contigs(self):

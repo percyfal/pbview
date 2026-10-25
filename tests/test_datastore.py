@@ -35,8 +35,8 @@ def test_datastore_init(make_datastore_path, scenario, sample_sets):
     for track_name, track in ds.tracks.items():
         assert isinstance(track_name, str)
         assert isinstance(track, Track)
-    assert len(ds.genome) == 24
     assert len(ds.genome.contigs) == 3
+    assert ds.genome.size == 24
 
 
 @pytest.fixture
@@ -69,7 +69,7 @@ def test_datastore_genome_coords(raw_ds):
     assert list(raw_ds.contigs) == [
         "chr1",
         "chr2",
-        "chr3",
+        "chr10",
     ]
     assert list(raw_ds.offsets) == [
         0,
