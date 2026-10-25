@@ -27,6 +27,11 @@ def data():
 
 
 @pytest.fixture
+def genome():
+    return Genome(contigs=("chr1", "chr2", "chr10"), offsets=(0, 1000, 1800, 2400))
+
+
+@pytest.fixture
 def coords(raw_ds):
     return Coordinates(raw_ds)
 
@@ -58,10 +63,10 @@ def test_position_intervals_as_pyranges(position_intervals, expected):
 
 
 def test_genome_init():
-    genome = Genome(contigs=("chr1", "chr2"), offsets=(0, 1000, 1800))
-    assert genome.contigs == ("chr1", "chr2")
+    genome = Genome(contigs=("chr10", "chr1"), offsets=(0, 1000, 1800))
+    assert genome.contigs == ("chr10", "chr1")
     assert genome.offsets == (0, 1000, 1800)
-    assert len(genome) == 1800
+    assert genome.size == 1800
 
 
 def test_genome_init_raises():
@@ -76,58 +81,80 @@ def test_genome_as_pyranges():
     assert ret.length == 1800
 
 
-@pytest.mark.parametrize("position_intervals", [None, [], ()])
-def test_empty_spatial_selection_is_noop(data, position_intervals):
-    sel = SpatialSelection(position_intervals=position_intervals)
-    ret = sel.apply(data)
-    assert ret == data
+@pytest.mark.parametrize(
+    "contigs",
+    [
+        (
+            "chr1",
+            "chr2",
+        )
+    ],
+)
+def test_spatial_selection_init(contigs):
+    sel = SpatialSelection(contigs=contigs)
+    assert sel.contigs == contigs
 
 
-@pytest.mark.parametrize("position_intervals", [None, [], ()])
-def test_empty_spatial_selection_on_subset_is_noop(data, position_intervals):
-    data = data.copy()
-    data = data.sel(position=slice(0, 2))
-    sel = SpatialSelection(position_intervals=position_intervals)
-    ret = sel.apply(data)
-    assert ret == data
-
-
-def test_spatial_selection_position_intervals(data):
-    sel = SpatialSelection(position_intervals=[(0, 1), (2, 3)])
-    ret = sel.apply(data)
-    # Position is not a coordinate; the returned values will always
-    # start from 0
-    assert len(ret.position) == 2
-    # Contigs are untouched
-    assert ret.coords["contigs"].values.tolist() == ["chr1", "chr2"]
+@pytest.mark.parametrize("contigs", [None, [], ()])
+def test_spatial_selection_empty_is_noop(contigs):
+    sel = SpatialSelection(contigs=contigs)
+    assert sel.contigs is None
 
 
 @pytest.mark.parametrize(
     "kw,expected",
     [
-        ({"position_intervals": ((200, 600),)}, 400),
-        ({"position_intervals": ((200, 600), (1200, 1400))}, 600),
-        ({"position_intervals": ((200, 600),), "contigs": ["chr2"]}, 0),
-        ({"position_intervals": ((200, 600),), "contigs": ["chr1", "chr2"]}, 400),
-        ({"position_intervals": ((200, 600), (1200, 1400)), "contigs": ["chr2"]}, 200),
+        ({"contigs": ("chr2",)}, ("chr2",)),
+        (
+            {"contigs": ("chr10", "chr2")},
+            (
+                "chr2",
+                "chr10",
+            ),
+        ),
+        (
+            {"contigs": ()},
+            (
+                "chr1",
+                "chr2",
+                "chr10",
+            ),
+        ),
     ],
 )
-def test_genome_resolve_spatial_selection(kw, expected):
-    genome = Genome(contigs=("chr1", "chr2", "chr3"), offsets=(0, 1000, 1800, 2700))
+def test_genome_resolve_contigs_for_spatial_selection(genome, kw, expected):
+    sel = SpatialSelection(**kw)
+    contigs = genome.resolve_contigs(sel)
+    assert contigs == expected
+
+
+def test_genome_resolve_contigs_for_spatial_selection_raise_wrong_contig(genome):
+    with pytest.raises(KeyError):
+        sel = SpatialSelection(contigs=("chr4",))
+        genome.resolve_contigs(sel)
+
+
+@pytest.mark.parametrize(
+    "kw,expected",
+    [
+        ({"contigs": ("chr10",)}, (600, ((1800, 2400),))),
+        (
+            {"contigs": ("chr10", "chr1")},
+            (
+                1600,
+                (
+                    (0, 1000),
+                    (1800, 2400),
+                ),
+            ),
+        ),
+    ],
+)
+def test_genome_resolve(genome, kw, expected):
     sel = SpatialSelection(**kw)
     pi = genome.resolve(sel)
-    assert len(pi) == expected
-
-
-def test_genome_resolve_intervals():
-    genome = Genome(contigs=("chr1", "chr2", "chr3"), offsets=(0, 1000, 1800, 2700))
-    sel = SpatialSelection(position_intervals=((200, 600), (1200, 1900)))
-    pi = genome.resolve(sel)
-    x = genome.resolve_intervals(pi)
-    assert list(x["Chromosome"].values) == ["chr1", "chr2", "chr3"]
-    assert x.iloc[0].tolist()[0:2] == [200, 600]
-    assert x.iloc[1].tolist()[0:2] == [1200, 1800]
-    assert x.iloc[2].tolist()[0:2] == [1800, 1900]
+    assert len(pi) == expected[0]
+    assert pi.intervals == expected[1]
 
 
 @pytest.mark.parametrize("selected", [None, [], ()])
@@ -166,23 +193,26 @@ def test_coordinates_init(make_datastore, kw, expected):
     assert coords.n_sample_sets == expected
 
 
-def test_coordinates_contig_slices(coords):
-    slices = coords.contig_slices(["chr2"])
-    assert slices == [(10, 18)]
-    slices = coords.contig_slices(["chr1", "chr3"])
-    assert slices == [(0, 10), (18, 24)]
-    slices = coords.contig_slices(["chr2", "chr3"])
-    assert slices == [(10, 24)]
+def test_genome_contig_slices(genome, coords):
+    slices = genome.contig_slices(coords.with_contigs(["chr2"]))
+    assert slices == ((1000, 1800),)
+    slices = genome.contig_slices(coords.with_contigs(["chr1", "chr10"]))
+    assert slices == (
+        (0, 1000),
+        (1800, 2400),
+    )
+    slices = genome.contig_slices(coords.with_contigs(["chr2", "chr10"]))
+    assert slices == ((1000, 2400),)
 
 
-def test_coordinates_with_contigs(coords):
-    ret = coords.with_contigs_new(["chr1", "chr2"])
-    assert ret.spatial.position_intervals == [(0, 18)]
+def test_coordinates_with_contigs(coords, genome):
+    ret = coords.with_contigs(["chr1", "chr2"])
+    assert ret.n_contigs == 2
 
 
 def test_coordinates_with_contigs_unknown_raises(coords):
     with pytest.raises(ValueError):
-        coords.with_contigs_new(["chr1", "chr4"])
+        coords.with_contigs(["chr1", "chr4"])
 
 
 def test_coordinates_with_samples(coords):
