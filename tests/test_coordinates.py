@@ -197,6 +197,15 @@ def test_coordinates_with_length_filter(coords):
     pass
 
 
+def test_with_length_filter(coordinates):
+    coord = coordinates
+    assert coord.with_length_filter(lower=850_000).n_contigs == 2
+    assert coord.with_length_filter(lower=850_000, upper=950_000).n_contigs == 1
+    assert coord.with_length_filter(upper=950_000).n_contigs == 2
+
+
+# FIXME: Revise all tests to use small test fixtures, followed by
+# transition to the new selection API.
 @dataclass(frozen=True)
 class ExpectedSampleSetsSize:
     default: int
@@ -254,13 +263,6 @@ def expected_sample_set_membership_size(sample_sets):
         n_samples_pop1=3,
         n_samples_s1_s2_pop1=2,
     )
-
-
-def test_with_length_filter(coordinates):
-    coord = coordinates
-    assert coord.with_length_filter(lower=850_000).n_contigs == 2
-    assert coord.with_length_filter(lower=850_000, upper=950_000).n_contigs == 1
-    assert coord.with_length_filter(upper=950_000).n_contigs == 2
 
 
 def test_with_contigs(coordinates):

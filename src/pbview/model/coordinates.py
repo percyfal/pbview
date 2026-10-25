@@ -26,6 +26,9 @@ if TYPE_CHECKING:
 xr.set_options(display_expand_attrs=False)
 
 
+# FIXME: spatial selections need genome offsets so apply cannot work.
+# Therefore, this Protocol is not really useful since only
+# ColumnSelection uses apply.
 class Selection(Protocol):
     """A protocol for selection over an axis of a track."""
 
@@ -52,6 +55,7 @@ class SpatialSelection:
         if self.contigs is not None and len(self.contigs) == 0:
             object.__setattr__(self, "contigs", None)
 
+    # FIXME: Remove in favor of resolve
     def apply(self, data: xr.Dataset) -> xr.Dataset:
         """Apply the selection to the given dataset."""
         if self.position_intervals is not None:
@@ -238,6 +242,9 @@ class Coordinates:
 
     """
 
+    # FIXME: new conversation emphasizes that Coordinates should *not*
+    # hold a referenc to the datastore; this breaks meaningful == and
+    # hashing, and every with_* carries I/O state,
     datastore: DataStore
     spatial: SpatialSelection = SpatialSelection()
     column: dict[str, ColumnSelection] = ()
@@ -353,7 +360,10 @@ class Coordinates:
             if unknown:
                 raise ValueError(f"Unknown contigs: {sorted(unknown)}")
             slices = self.contig_slices(contigs)
-        return replace(self, spatial=replace(self.spatial, position_intervals=slices))
+        return replace(
+            self,
+            spatial=replace(self.spatial, position_intervals=slices, contigs=contigs),
+        )
 
     def with_contigs(
         self,
@@ -506,6 +516,8 @@ class Coordinates:
     def sample_excluded(self):
         return ~self.sample_selected
 
+    # FIXME: Return self.spatial.contigs; if None, return
+    # self.datastore.contigs. Need claude input on this.
     @property
     def contigs(self):
         return self.contigs_all[self.contig_selected]
