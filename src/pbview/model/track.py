@@ -18,7 +18,6 @@ import panel as pn
 
 if TYPE_CHECKING:
     import numpy.typing as npt
-import pandas as pd
 import xarray as xr
 from dask.diagnostics import ProgressBar
 
@@ -121,7 +120,7 @@ class PrecomputedTrack:
 def _isel_intervals(data: xr.Dataset, intervals: PositionIntervals):
     """isel intervals from data along the position dimension."""
     # FIXME: Check if intervals correspond to entire genome
-    if len(intervals) == data.position.size:
+    if intervals.n_positions == data.position.size:
         return data
     parts = [data.isel(position=slice(s, e)) for s, e in intervals.intervals]
     if not parts:
@@ -207,7 +206,9 @@ class Track:
     def _select_positions(self, res, coord: Coordinates) -> xr.DataArray:
         # SHIM: legacy bridge: remove with Track.data(coord)
         intervals = coord.datastore.genome.resolve(coord.spatial)
-        return _isel_intervals(res.to_dataset(), intervals)
+        if isinstance(res, xr.DataTree):
+            res = res.to_dataset()
+        return _isel_intervals(res, intervals)
 
     def _select(self, base: xr.DataArray, coord: Coordinates) -> xr.DataArray:
         """Apply a sample + position selection"""
@@ -332,21 +333,3 @@ class Track:
     # operation is not. Would need reactive "UPDATE" button.
     def size(self):
         pass
-
-    def summary(self, coord: Coordinates, lower: int = 0, upper: float = np.inf):
-        """Return a track summary of coordinate selection relative to
-        base coordinates."""
-        df = pd.DataFrame(
-            [
-                {
-                    "genome_size_all": coord.genome_size_all,
-                    "genome_size": coord.genome_size,
-                    "genome_size (%)": np.round(
-                        coord.genome_size / coord.genome_size_all * 100.0, 2
-                    ),
-                    "min_contig_len": lower,
-                    "max_contig_len": upper,
-                }
-            ]
-        )
-        return df

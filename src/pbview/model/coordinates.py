@@ -208,7 +208,9 @@ class PositionIntervals:
 
     intervals: tuple[tuple[int, int], ...]
 
-    def __len__(self) -> int:
+    @property
+    def n_positions(self) -> int:
+        """Return the total interval length"""
         if len(self.intervals) == 0:
             return 0
         return sum([e - s for s, e in self.intervals])
@@ -250,11 +252,15 @@ class Coordinates:
     # FIXME: new conversation emphasizes that Coordinates should *not*
     # hold a referenc to the datastore; this breaks meaningful == and
     # hashing, and every with_* carries I/O state,
-    datastore: DataStore
+    datastore: DataStore = field(repr=False, compare=False)  # SHIM: remove
     spatial: SpatialSelection = SpatialSelection()
     column: dict[str, ColumnSelection] = field(default_factory=dict)
-    _sample_selected: npt.NDArray[np.bool_] | None = None
-    _contig_selected: npt.NDArray[np.bool_] | None = None
+    _sample_selected: npt.NDArray[np.bool_] | None = field(
+        default=None, repr=False, compare=False
+    )
+    _contig_selected: npt.NDArray[np.bool_] | None = field(
+        default=None, repr=False, compare=False
+    )
 
     def __post_init__(self):
         sample = self._sample_selected
@@ -272,24 +278,6 @@ class Coordinates:
             np.ones(self.n_contigs_all, dtype=bool)
             if contigs is None
             else np.asarray(contigs, dtype=bool),
-        )
-
-    def __str__(self):
-        return (
-            f"Coordinates summary:\n"
-            f"  Samples: {self.n_samples} ({self.n_samples_all})\n"
-            f"  Contigs: {self.n_contigs} ({self.n_contigs_all})\n"
-            f"  Sample sets: {self.n_user_sample_sets} "
-            f"({self.n_user_sample_sets_all})\n"
-        )
-
-    def __repr__(self) -> str:
-        return (
-            f"Coordinates(contigs={self.n_contigs}/{self.n_contigs_all}, "
-            f"samples={self.n_samples}/{self.n_samples_all}, "
-            f"sample_sets={self.n_user_sample_sets}/"
-            f"{self.n_user_sample_sets_all}, "
-            f"genome_size={self.genome_size} bp)"
         )
 
     def __hash__(self) -> int:

@@ -1,8 +1,17 @@
 import numpy as np
 import pytest
 
+from pbview.model.coordinates import Genome
 from pbview.model.datastore import DataStore
 from pbview.model.selection import make_selection_state_class
+
+
+@pytest.fixture()
+def genome():
+    return Genome(
+        contigs=["chr1", "chr2", "chr3"],
+        offsets=[0, 1_000_000, 1_900_000, 2_700_000],
+    )
 
 
 @pytest.fixture()
@@ -60,10 +69,10 @@ def test_length_filters(state, args, expected):
         ({"contigs": ["chr1", "chr2"]}, {"genome_size": 1_900_000, "n_contigs": 2}),
     ],
 )
-def test_contigs_filter(state, args, expected):
+def test_contigs_filter(state, args, expected, genome):
     state.contigs = args["contigs"]
-    assert state.coord.genome_size == expected["genome_size"]
-    assert state.coord.n_contigs == expected["n_contigs"]
+    assert genome.resolve(state.coord.spatial).n_positions == expected["genome_size"]
+    assert len(genome.resolve_contigs(state.coord.spatial)) == expected["n_contigs"]
 
 
 def test_contigs_filter_unknown_raises(state):
