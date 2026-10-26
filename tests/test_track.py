@@ -3,8 +3,25 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from pbview.model.coordinates import PositionIntervals
 from pbview.model.datastore import DataStore
-from pbview.model.track import Track
+from pbview.model.track import Track, _isel_intervals
+
+N = 24
+
+
+@pytest.fixture
+def dataset() -> xr.Dataset:
+    """Dataset fixture"""
+    values = np.arange(2 * N).reshape(2, N)
+    return xr.Dataset(
+        {"values": (("sample", "position"), values)},
+        coords={
+            "sample": np.array(["s1", "s2"]),
+            "contigs": np.array(["chr1", "chr2", "chr10"]),
+            "offsets": np.array([0, 10, 18, 24]),
+        },
+    )
 
 
 @pytest.fixture
@@ -165,3 +182,30 @@ def test_from_tree_finds_meta(sample_sets):
     )
     track = Track.from_tree("depth", raw["depth"], raw)
     assert "column_grouping" in track.meta.data_vars
+
+
+def test_whole_genome_is_noop(dataset):
+    result = _isel_intervals(dataset, PositionIntervals(((0, N),)))
+    assert result == dataset
+
+
+def test_single_interval(dataset):
+    result = _isel_intervals(dataset, PositionIntervals(((10, 18),)))
+    assert result.sizes["position"] == 8
+    np.testing.assert_array_equal(result["values"], dataset["values"].values[:, 10:18])
+
+
+def test_non_adjacent_intervals_concat_in_order(dataset):
+    result = _isel_intervals(dataset, PositionIntervals(((0, 10), (18, 24))))
+    expected = np.concatenate(
+        [dataset["values"].values[:, 0:10], dataset["values"].values[:, 18:24]], axis=1
+    )
+    assert result.sizes["position"] == 16
+    np.testing.assert_array_equal(result["values"], expected)
+    assert list(result["sample"].values) == ["s1", "s2"]
+
+
+def test_empty_intervals(dataset):
+    result = _isel_intervals(dataset, PositionIntervals(()))
+    assert result.sizes["position"] == 0
+    assert "values" in result.data_vars

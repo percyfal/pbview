@@ -29,7 +29,7 @@ from ._identity import datatree_id
 from .chunking import optimal_chunks_dask
 
 if TYPE_CHECKING:
-    from pbview.model.coordinates import Coordinates
+    from pbview.model.coordinates import Coordinates, PositionIntervals
 
 
 _THRESHOLD_RE = re.compile(r"^(?P<base>.+)_missing_cutoff=(?P<t>\d+)$")
@@ -118,6 +118,21 @@ class PrecomputedTrack:
         return per_contig_sum / lengths
 
 
+def _isel_intervals(data: xr.Dataset, intervals: PositionIntervals):
+    """isel intervals from data along the position dimension."""
+    # FIXME: Check if intervals correspond to entire genome
+    if len(intervals) == data.position.size:
+        return data
+    parts = [data.isel(position=slice(s, e)) for s, e in intervals.intervals]
+    if not parts:
+        return data.isel(position=slice(0, 0))
+    if len(parts) == 1:
+        return parts[0]
+    return xr.concat(
+        parts, dim="position", data_vars="minimal", coords="minimal", compat="override"
+    )
+
+
 class Track:
     """A representation of a pbzarr data track.
 
@@ -189,14 +204,10 @@ class Track:
         """Return the list of column names."""
         return self._data[self.column_dim].values.tolist()
 
-    def _select_positions(self, base: xr.DataArray, coord: Coordinates) -> xr.DataArray:
-        """Apply a contig/position selection from coord."""
-        if not coord.contig_selection_is_active:
-            return base
-        if coord.n_contigs == 0:
-            return base.sel(position=[])
-        parts = [base.isel(position=slice(a, b)) for a, b in coord.contig_slices()]
-        return xr.concat(parts, dim="position")
+    def _select_positions(self, res, coord: Coordinates) -> xr.DataArray:
+        # SHIM: legacy bridge: remove with Track.data(coord)
+        intervals = coord.datastore.genome.resolve(coord.spatial)
+        return _isel_intervals(res.to_dataset(), intervals)
 
     def _select(self, base: xr.DataArray, coord: Coordinates) -> xr.DataArray:
         """Apply a sample + position selection"""
