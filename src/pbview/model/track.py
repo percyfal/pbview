@@ -125,6 +125,7 @@ class Track:
         track_name: name of track
         data: pbzarr data group
         preprocess_data: preprocessing data set
+        meta: metadata for the track
 
     Returns:
         A Track object.
@@ -137,11 +138,15 @@ class Track:
         self,
         track_name: str,
         data: xr.DataTree,
-        preprocess_data: xr.DataTree | None = None,
+        preprocess_data: xr.DataTree
+        | None = None,  # SHIM: remove with PrecomputedTrack
+        *,
+        meta: xr.DataTree | None = None,
     ):
         self.name = track_name
         self._data = data
         self._pre = PrecomputedTrack(preprocess_data, track_name=track_name)
+        self.meta = meta
         column_dims = [dim for dim in data.dims if dim not in self.SPATIAL_DIMS]
         if len(column_dims) > 1:
             raise ValueError(
@@ -156,6 +161,23 @@ class Track:
 
     def __str__(self) -> str:
         return f"Track(name={self.name})"
+
+    @classmethod
+    def from_tree(
+        cls, name: str, data: xr.DataTree, raw: xr.DataTree | None = None, **legacy
+    ) -> "Track":
+        node = raw.children.get(name)
+        meta = node.children.get("_meta") if node is not None else None
+        return cls(name, data, meta=meta, **legacy)
+
+    def grouping(self, source_dim: str) -> xr.DataArray | None:
+        """Membership matrix (column_dim, source_dim)"""
+        if self.meta is None or "column_grouping" not in self.meta.data_vars:
+            return None
+        membership = self.meta["column_grouping"]
+        if {self.column_dim, source_dim} <= set(membership.dims):
+            return membership
+        return None
 
     @property
     def column_dim(self) -> str:

@@ -154,3 +154,14 @@ def test_contig_mean_coverage(track):
         [75.17373, 115.60176, 123.73403],
         rtol=1e-5,
     )
+
+
+def test_from_tree_finds_meta(sample_sets):
+    raw = xr.DataTree.from_dict(
+        {
+            "/depth": xr.Dataset(),
+            "/depth/_meta/column_grouping": sample_sets,
+        }
+    )
+    track = Track.from_tree("depth", raw["depth"], raw)
+    assert "column_grouping" in track.meta.data_vars
