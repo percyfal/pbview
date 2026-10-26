@@ -141,7 +141,6 @@ class Genome:
             raise KeyError(f"unknown contigs {unknown}")
         return np.array(sorted([self._contig_index[c] for c in contigs]), dtype=np.intp)
 
-    # FIXME: Is this function needed?
     def resolve_contigs(self, spatial: SpatialSelection) -> tuple[str, ...]:
         """Resolve contig names"""
         if spatial.contigs is None:
@@ -258,20 +257,21 @@ class Coordinates:
     _contig_selected: npt.NDArray[np.bool_] | None = None
 
     def __post_init__(self):
-        n_samples_all, n_contigs_all = self.n_samples_all, self.n_contigs_all
+        sample = self._sample_selected
+        contigs = self._contig_selected
         object.__setattr__(
             self,
             "_sample_selected",
-            np.ones(n_samples_all, dtype=bool)
-            if self.sample_selected is None
-            else np.asarray(self.sample_selected, dtype=bool),
+            np.ones(self.n_samples_all, dtype=bool)
+            if sample is None
+            else np.asarray(sample, dtype=bool),
         )
         object.__setattr__(
             self,
             "_contig_selected",
-            np.ones(n_contigs_all, dtype=bool)
-            if self.contig_selected is None
-            else np.asarray(self.contig_selected, dtype=bool),
+            np.ones(self.n_contigs_all, dtype=bool)
+            if contigs is None
+            else np.asarray(contigs, dtype=bool),
         )
 
     def __str__(self):
@@ -323,15 +323,12 @@ class Coordinates:
         contig_selected: npt.NDArray[np.bool_] | None = None,
     ) -> "Coordinates":
         """Return a new instance sharing raw data, with new selection arrays."""
-        new = replace(
-            self,
-            _sample_selected=self.sample_selected
-            if sample_selected is None
-            else np.asarray(sample_selected, dtype=bool),
-            _contig_selected=self.contig_selected
-            if contig_selected is None
-            else np.asarray(contig_selected, dtype=bool),
-        )
+        changes = {}
+        if sample_selected is not None:
+            changes["_sample_selected"] = np.asarray(sample_selected, dtype=bool)
+        if contig_selected is not None:
+            changes["_contig_selected"] = np.asarray(contig_selected, dtype=bool)
+        new = replace(self, **changes)
         return new
 
     def matching_sample_set(self) -> str | None:
@@ -366,7 +363,7 @@ class Coordinates:
         new = replace(self, spatial=replace(self.spatial, contigs=contigs))
 
         # SHIM: keep legacy mask until readers use selected_contigs(genome)
-        if self.contig_selected is not None:
+        if self._contig_selected is not None:
             selected = new.spatial.contigs
             if selected is not None:
                 unknown = set(selected) - set(self.contigs_all.tolist())
@@ -374,7 +371,7 @@ class Coordinates:
                     raise ValueError(f"Unknown contigs: {sorted(unknown)}")
                 keep = np.isin(self.contigs_all, selected)
             else:
-                keep = np.ones_like(self.contig_selected)
+                keep = np.ones_like(self._contig_selected)
             new = replace(new, _contig_selected=keep)
         return new
 
@@ -499,7 +496,7 @@ class Coordinates:
         return list(map(tuple, slices))
 
     @property
-    def contig_selected(self):
+    def contig_selected(self):  # SHIM
         _warn_shim("Coordinates.contig_selected", "selected_contigs(genome)")
         return self._contig_selected
 
@@ -508,7 +505,7 @@ class Coordinates:
         return ~self.contig_selected
 
     @property
-    def sample_selected(self):
+    def sample_selected(self):  # SHIM
         _warn_shim("Coordinates.sample_selected", "resolve(track)")
         return self._sample_selected
 
@@ -524,7 +521,7 @@ class Coordinates:
 
     def selected_contigs(self, genome: Genome) -> tuple[str, ...]:
         """Currently selected contigs"""
-        pass
+        return genome.resolve_contigs(self.spatial)
 
     @property
     def n_contigs(self):
