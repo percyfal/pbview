@@ -1,3 +1,4 @@
+import warnings
 from dataclasses import dataclass
 
 import _helpers
@@ -5,6 +6,7 @@ import numpy as np
 import pyranges1 as pr
 import pytest
 
+from pbview._compat import ShimWarning
 from pbview.model.coordinates import (
     ColumnSelection,
     Coordinates,
@@ -227,8 +229,8 @@ def test_coordinates_with_length_filter(coords):
     pass
 
 
-def test_with_length_filter(coordinates):
-    coord = coordinates
+def test_with_length_filter(legacy_coords):
+    coord = legacy_coords
     assert coord.with_length_filter(lower=850_000).n_contigs == 2
     assert coord.with_length_filter(lower=850_000, upper=950_000).n_contigs == 1
     assert coord.with_length_filter(upper=950_000).n_contigs == 2
@@ -267,7 +269,7 @@ def coordinate_args(ds):
 
 
 @pytest.fixture
-def coordinates(coordinate_args):
+def legacy_coords(coordinate_args):
     ds = coordinate_args
     return Coordinates(datastore=ds)
 
@@ -295,21 +297,21 @@ def expected_sample_set_membership_size(sample_sets):
     )
 
 
-def test_with_contigs(coordinates):
-    coord = coordinates
+def test_with_contigs(legacy_coords):
+    coord = legacy_coords
     assert coord.with_contigs(["chr1", "chr3"]).n_contigs == 2
     assert coord.with_contigs(["chr2"]).n_contigs == 1
     assert coord.with_contigs(["chr1"]).with_contigs().n_contigs == 3
 
 
-def test_with_contigs_unknown_raises(coordinates):
-    coord = coordinates
+def test_with_contigs_unknown_raises(legacy_coords):
+    coord = legacy_coords
     with pytest.raises(ValueError):
         coord.with_contigs(["chr4"])
 
 
-def test_with_contigs_and_length_filters(coordinates):
-    coord = coordinates
+def test_with_contigs_and_length_filters(legacy_coords):
+    coord = legacy_coords
     assert coord.with_contigs(["chr1"]).with_length_filter(lower=850_000).n_contigs == 1
     assert (
         coord.with_contigs(["chr1", "chr2"]).with_length_filter(lower=950_000).n_contigs
@@ -317,16 +319,35 @@ def test_with_contigs_and_length_filters(coordinates):
     )
 
 
-def test_with_samples(coordinates, expected_sample_set_membership_size):
-    coord = coordinates
+def test_legacy_contig_mask_read_warns(legacy_coords):
+    legacy_coords = legacy_coords
+    with pytest.warns(ShimWarning, match="contig_selected"):
+        legacy_coords.contig_selected
+
+
+def test_with_contigs_does_not_warn(legacy_coords):
+    legacy_coords = legacy_coords
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ShimWarning)
+        legacy_coords.with_contigs(["chr1"])
+
+
+def test_with_samples_does_not_warn(legacy_coords):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ShimWarning)
+        legacy_coords.with_samples(["s1"]).with_sample_sets(["pop1"])
+
+
+def test_with_samples(legacy_coords, expected_sample_set_membership_size):
+    coord = legacy_coords
     assert coord.with_samples(["s1", "s2"]).n_samples == 2
     assert coord.with_samples(["s1", "s8"]).n_samples == 1
     assert coord.with_samples(["s8"]).n_samples == 0
     assert coord.with_samples().n_samples == 7
 
 
-def test_with_sample_sets(coordinates, expected_sample_set_membership_size):
-    coord = coordinates
+def test_with_sample_sets(legacy_coords, expected_sample_set_membership_size):
+    coord = legacy_coords
     assert (
         coord.with_sample_sets(sample_sets=["pop1"]).n_user_sample_sets
         == expected_sample_set_membership_size.n_user_sample_sets_pop1
@@ -353,8 +374,10 @@ def test_with_sample_sets(coordinates, expected_sample_set_membership_size):
     )
 
 
-def test_with_samples_and_sample_sets(coordinates, expected_sample_set_membership_size):
-    coord = coordinates
+def test_with_samples_and_sample_sets(
+    legacy_coords, expected_sample_set_membership_size
+):
+    coord = legacy_coords
     assert (
         coord.with_samples(["s1", "s2"])
         .with_sample_sets(sample_sets=["pop2"])
@@ -369,8 +392,8 @@ def test_with_samples_and_sample_sets(coordinates, expected_sample_set_membershi
     )
 
 
-def test_contig_slices(coordinates):
-    coord = coordinates
+def test_contig_slices(legacy_coords):
+    coord = legacy_coords
     filtered_coord = coord.with_contigs(["chr1", "chr2"])
     assert len(filtered_coord.contig_slices()) == 1
     assert filtered_coord.contig_slices()[0][0] == 0
@@ -383,8 +406,8 @@ def test_contig_slices(coordinates):
     assert filtered_coord.contig_slices()[1][1] == 2_700_000
 
 
-def test_reset(coordinates):
-    coord = coordinates
+def test_reset(legacy_coords):
+    coord = legacy_coords
     filtered_coord = coord.with_length_filter(lower=850_000).with_samples(["s1", "s2"])
     assert filtered_coord.n_contigs == 2
     assert filtered_coord.n_samples == 2
@@ -393,8 +416,8 @@ def test_reset(coordinates):
     assert reset_coord.n_samples == 7
 
 
-def test_base_coord(coordinates):
-    coord = coordinates
+def test_base_coord(legacy_coords):
+    coord = legacy_coords
     filtered_coord = coord.with_length_filter(lower=850_000).with_samples(["s1", "s2"])
     assert filtered_coord.n_contigs == 2
     assert filtered_coord.n_samples == 2
@@ -402,8 +425,8 @@ def test_base_coord(coordinates):
     assert filtered_coord.base_coord.n_samples == 7
 
 
-def test_as_pyranges(coordinates):
-    coord = coordinates
+def test_as_pyranges(legacy_coords):
+    coord = legacy_coords
     filtered_coord = coord.with_length_filter(lower=850_000).with_samples(["s1", "s2"])
     pr1 = coord.as_pyranges()
     pr2 = filtered_coord.as_pyranges()
@@ -414,8 +437,8 @@ def test_as_pyranges(coordinates):
 
 
 # FIXME: add cache hit test
-def test_coordinates_cache_hit(coordinates, request):
-    coord = coordinates
+def test_legacy_coords_cache_hit(legacy_coords, request):
+    coord = legacy_coords
     assert hash(coord) == hash(coord)
     assert hash(coord.with_sample_sets(["pop1"])) == hash(
         coord.with_sample_sets(["pop1"])
