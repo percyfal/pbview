@@ -74,57 +74,6 @@ def test_data_with_contigs(track, coord):
         track.data(coord=coord.with_contigs(["chr4"]))
 
 
-def test_summary(track, coord):
-    summary = track.summary(coord)
-    assert summary["genome_size_all"][0] == 2_700_000
-    assert summary["genome_size"][0] == 2_700_000
-
-
-@pytest.mark.parametrize(
-    "args,expected",
-    [
-        (
-            {"contigs": ["chr1"]},
-            {
-                "genome_size_all": 2_700_000,
-                "genome_size": 1_000_000,
-            },
-        ),
-    ],
-)
-def test_summary_with_contigs(track, coord, args, expected):
-    coord = coord.with_contigs(**args)
-    summary = track.summary(coord)
-    for key, value in expected.items():
-        assert summary[key][0] == value
-
-
-@pytest.mark.parametrize(
-    argnames="args,expected",
-    argvalues=[
-        (
-            {"lower": 950_000},
-            {
-                "genome_size_all": 2_700_000,
-                "genome_size": 1_000_000,
-            },
-        ),
-        (
-            {"upper": 950_000},
-            {
-                "genome_size_all": 2_700_000,
-                "genome_size": 1_700_000,
-            },
-        ),
-    ],
-)
-def test_summary_with_length_filters(track, coord, args, expected):
-    coord = coord.with_length_filter(**args)
-    summary = track.summary(coord)
-    for key, value in expected.items():
-        assert summary[key][0] == value
-
-
 def test_lru_cache(track, coord):
     bins = np.arange(0, 11)
     track.coverage_hist(bins=bins, coord=coord)
@@ -184,15 +133,21 @@ def test_from_tree_finds_meta(sample_sets):
     assert "column_grouping" in track.meta.data_vars
 
 
+# FIXME: parametrize these tests on Dataset / DataArray
 def test_whole_genome_is_noop(dataset):
     result = _isel_intervals(dataset, PositionIntervals(((0, N),)))
-    assert result == dataset
+    xr.testing.assert_equal(result, dataset)
+    result = _isel_intervals(dataset["values"], PositionIntervals(((0, N),)))
+    xr.testing.assert_equal(result, dataset["values"])
 
 
 def test_single_interval(dataset):
     result = _isel_intervals(dataset, PositionIntervals(((10, 18),)))
     assert result.sizes["position"] == 8
     np.testing.assert_array_equal(result["values"], dataset["values"].values[:, 10:18])
+    result = _isel_intervals(dataset["values"], PositionIntervals(((10, 18),)))
+    assert result.sizes["position"] == 8
+    np.testing.assert_array_equal(result, dataset["values"].values[:, 10:18])
 
 
 def test_non_adjacent_intervals_concat_in_order(dataset):

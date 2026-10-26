@@ -47,7 +47,7 @@ def coords(raw_ds):
 )
 def test_position_intervals(position_intervals, expected):
     pi = PositionIntervals(position_intervals)
-    assert len(pi) == expected
+    assert pi.n_positions == expected
 
 
 @pytest.mark.parametrize(
@@ -155,7 +155,7 @@ def test_genome_resolve_contigs_for_spatial_selection_raise_wrong_contig(genome)
 def test_genome_resolve(genome, kw, expected):
     sel = SpatialSelection(**kw)
     pi = genome.resolve(sel)
-    assert len(pi) == expected[0]
+    assert pi.n_positions == expected[0]
     assert pi.intervals == expected[1]
 
 
@@ -196,20 +196,23 @@ def test_coordinates_init(make_datastore, kw, expected):
 
 
 def test_genome_contig_slices(genome, coords):
-    slices = genome.contig_slices(coords.with_contigs(["chr2"]))
+    slices = genome.contig_slices(coords.with_contigs(["chr2"]).spatial)
     assert slices == ((1000, 1800),)
-    slices = genome.contig_slices(coords.with_contigs(["chr1", "chr10"]))
+    slices = genome.contig_slices(coords.with_contigs(["chr1", "chr10"]).spatial)
     assert slices == (
         (0, 1000),
         (1800, 2400),
     )
-    slices = genome.contig_slices(coords.with_contigs(["chr2", "chr10"]))
+    slices = genome.contig_slices(coords.with_contigs(["chr2", "chr10"]).spatial)
     assert slices == ((1000, 2400),)
 
 
 def test_coordinates_with_contigs(coords, genome):
-    ret = coords.with_contigs(["chr1", "chr2"])
-    assert ret.n_contigs == 2
+    assert len(coords.with_contigs(["chr1", "chr2"]).selected_contigs(genome)) == 2
+    assert len(coords.with_contigs(["chr2"]).selected_contigs(genome)) == 1
+    assert (
+        len(coords.with_contigs(["chr2"]).with_contigs().selected_contigs(genome)) == 3
+    )
 
 
 def test_coordinates_with_contigs_unknown_raises(coords):
@@ -297,19 +300,6 @@ def expected_sample_set_membership_size(sample_sets):
     )
 
 
-def test_with_contigs(legacy_coords):
-    coord = legacy_coords
-    assert coord.with_contigs(["chr1", "chr3"]).n_contigs == 2
-    assert coord.with_contigs(["chr2"]).n_contigs == 1
-    assert coord.with_contigs(["chr1"]).with_contigs().n_contigs == 3
-
-
-def test_with_contigs_unknown_raises(legacy_coords):
-    coord = legacy_coords
-    with pytest.raises(ValueError):
-        coord.with_contigs(["chr4"])
-
-
 def test_with_contigs_and_length_filters(legacy_coords):
     coord = legacy_coords
     assert coord.with_contigs(["chr1"]).with_length_filter(lower=850_000).n_contigs == 1
@@ -390,20 +380,6 @@ def test_with_samples_and_sample_sets(
         .n_samples
         == expected_sample_set_membership_size.n_samples_s1_s2_pop1
     )
-
-
-def test_contig_slices(legacy_coords):
-    coord = legacy_coords
-    filtered_coord = coord.with_contigs(["chr1", "chr2"])
-    assert len(filtered_coord.contig_slices()) == 1
-    assert filtered_coord.contig_slices()[0][0] == 0
-    assert filtered_coord.contig_slices()[0][1] == 1_900_000
-    filtered_coord = coord.with_contigs(["chr1", "chr3"])
-    assert len(filtered_coord.contig_slices()) == 2
-    assert filtered_coord.contig_slices()[0][0] == 0
-    assert filtered_coord.contig_slices()[0][1] == 1_000_000
-    assert filtered_coord.contig_slices()[1][0] == 1_900_000
-    assert filtered_coord.contig_slices()[1][1] == 2_700_000
 
 
 def test_reset(legacy_coords):
