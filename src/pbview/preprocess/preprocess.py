@@ -85,6 +85,7 @@ def compute_thresholds(
             stats = hist_stats(counts, bins)
             mask = (bins >= lo / n) & (bins <= up / n)
             accessible = int(counts[mask].sum())
+            genome = coord.datastore.genome  # SHIM: remove with Coordinates.datastore
             rows.append(
                 {
                     "sample_set": ss,
@@ -93,8 +94,8 @@ def compute_thresholds(
                     "upper": up,
                     "upper_by_sample": up / coord.with_sample_sets([ss]).n_samples,
                     "accessible_bp": accessible,
-                    "frac_active_genome": accessible / coord.genome_size,
-                    "frac_full_genome": accessible / coord.genome_size_all,
+                    "frac_active_genome": accessible / genome.size,
+                    "frac_full_genome": accessible / genome.size,
                     "median": stats["median"],
                     "mean": stats["mean"],
                     "60%": stats["mean"] * 0.6,
