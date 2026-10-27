@@ -70,7 +70,7 @@ def test_data_base_coord(track, coord):
 def test_data_with_contigs(track, coord):
     assert track.data(coord=coord.with_contigs(["chr1"])).dims["position"] == 1_000_000
     assert track.data(coord=coord.with_contigs(["chr2"])).dims["position"] == 900_000
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         track.data(coord=coord.with_contigs(["chr4"]))
 
 

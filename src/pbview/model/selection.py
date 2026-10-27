@@ -76,18 +76,23 @@ class SelectionStateBase(param.Parameterized):
         samples: tuple[str, ...],
         contigs: tuple[str, ...],
     ) -> Coordinates:
-        return (
-            base.with_samples(samples=samples or None)
-            .with_contigs(contigs=contigs or None)
-            .with_length_filter(lower=lower, upper=upper)
+        keep = base.datastore.genome.contigs_in_length_range(lower=lower, upper=upper)
+        if keep is not None:
+            contigs = [c for c in contigs if c in keep]
+        else:
+            contigs = ()
+        return base.with_samples(samples=samples or None).with_contigs(
+            contigs=contigs or None
         )
 
     @param.depends("lower", "upper", "contigs", watch=True)
     def _apply_contig_filters(self):
         """Push contig length param changes into the mutable coord object."""
-        self.coord.with_contigs(contigs=self.contigs).with_length_filter(
+        keep = self.coord.datastore.genome.contigs_in_length_range(
             lower=self.lower, upper=self.upper
         )
+
+        self.coord.with_contigs(contigs=keep)
 
     @param.depends("samples", watch=True)
     def _apply_sample_filters(self):
