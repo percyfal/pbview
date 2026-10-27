@@ -30,7 +30,7 @@ def data():
 
 @pytest.fixture
 def genome():
-    return Genome(contigs=("chr1", "chr2", "chr10"), offsets=(0, 1000, 1800, 2400))
+    return Genome(contigs=("chr1", "chr2", "chr10"), offsets=(0, 10, 18, 24))
 
 
 @pytest.fixture
@@ -65,22 +65,72 @@ def test_position_intervals_as_pyranges(position_intervals, expected):
 
 
 def test_genome_init():
-    genome = Genome(contigs=("chr10", "chr1"), offsets=(0, 1000, 1800))
+    genome = Genome(contigs=("chr10", "chr1"), offsets=(0, 10, 18))
     assert genome.contigs == ("chr10", "chr1")
-    assert genome.offsets == (0, 1000, 1800)
-    assert genome.size == 1800
+    assert genome.offsets == (0, 10, 18)
+    assert genome.size == 18
 
 
 def test_genome_init_raises():
     with pytest.raises(ValueError):
-        _ = Genome(contigs=("chr1", "chr2"), offsets=(0, 1000))
+        _ = Genome(contigs=("chr1", "chr2"), offsets=(0, 10))
 
 
 def test_genome_as_pyranges():
-    genome = Genome(contigs=("chr1", "chr2"), offsets=(0, 1000, 1800))
+    genome = Genome(contigs=("chr1", "chr2"), offsets=(0, 10, 18))
     ret = genome.as_pyranges()
     assert isinstance(ret, pr.PyRanges)
-    assert ret.length == 1800
+    assert ret.length == 18
+
+
+def test_genome_contig_lengths():
+    genome = Genome(contigs=("chr1", "chr2"), offsets=(0, 10, 18))
+    np.testing.assert_equal([10, 8], genome.lengths)
+
+
+def test_genome_contigs_in_length_range(genome):
+    contigs = genome.contigs
+    np.testing.assert_equal(genome.contigs_in_length_range(), contigs)
+    np.testing.assert_equal(genome.contigs_in_length_range(lower=6), contigs)
+    np.testing.assert_equal(genome.contigs_in_length_range(lower=9), (contigs[0],))
+    np.testing.assert_equal(genome.contigs_in_length_range(lower=11), ())
+    np.testing.assert_equal(genome.contigs_in_length_range(upper=5), ())
+    np.testing.assert_equal(genome.contigs_in_length_range(upper=9), contigs[1:3])
+    np.testing.assert_equal(genome.contigs_in_length_range(upper=12), contigs)
+    np.testing.assert_equal(
+        genome.contigs_in_length_range(lower=7, upper=9), (contigs[1],)
+    )
+
+
+def test_genome_contig_slices(genome, coords):
+    slices = genome.contig_slices(coords.with_contigs(["chr2"]).spatial)
+    assert slices == ((10, 18),)
+    slices = genome.contig_slices(coords.with_contigs(["chr1", "chr10"]).spatial)
+    assert slices == (
+        (0, 10),
+        (18, 24),
+    )
+    slices = genome.contig_slices(coords.with_contigs(["chr2", "chr10"]).spatial)
+    assert slices == ((10, 24),)
+
+
+def test_genome_contig_indices(genome, coords):
+    indices = genome.contig_indices(coords.with_contigs(()).spatial.contigs)
+    assert len(indices) == 0
+    indices = genome.contig_indices(coords.with_contigs(("chr2",)).spatial.contigs)
+    assert indices == [1]
+    indices = genome.contig_indices(coords.with_contigs(None).spatial.contigs)
+    np.testing.assert_equal(indices, [0, 1, 2])
+
+
+def test_coordinates_with_contigs_empty_means_nothing(coords, genome):
+    assert coords.spatial == SpatialSelection(())
+    assert coords.selected_contigs(genome) == ()
+    assert genome.resolve(coords.spatial).n_positions == 0
+
+
+def test_coordinates_with_contigs_none_means_all(coords, genome):
+    assert coords.with_contigs(None).selected_contigs(genome) == genome.contigs
 
 
 @pytest.mark.parametrize(
@@ -97,9 +147,8 @@ def test_spatial_selection_init(contigs):
     assert sel.contigs == contigs
 
 
-@pytest.mark.parametrize("contigs", [None, [], ()])
-def test_spatial_selection_empty_is_noop(contigs):
-    sel = SpatialSelection(contigs=contigs)
+def test_spatial_selection_none_is_noop():
+    sel = SpatialSelection(contigs=None)
     assert sel.contigs is None
 
 
@@ -139,14 +188,14 @@ def test_genome_resolve_contigs_for_spatial_selection_raise_wrong_contig(genome)
 @pytest.mark.parametrize(
     "kw,expected",
     [
-        ({"contigs": ("chr10",)}, (600, ((1800, 2400),))),
+        ({"contigs": ("chr10",)}, (6, ((18, 24),))),
         (
             {"contigs": ("chr10", "chr1")},
             (
-                1600,
+                16,
                 (
-                    (0, 1000),
-                    (1800, 2400),
+                    (0, 10),
+                    (18, 24),
                 ),
             ),
         ),
@@ -193,18 +242,6 @@ def test_coordinates_init(make_datastore, kw, expected):
     ds = make_datastore(**kw)
     coords = Coordinates(ds)
     assert coords.n_sample_sets == expected
-
-
-def test_genome_contig_slices(genome, coords):
-    slices = genome.contig_slices(coords.with_contigs(["chr2"]).spatial)
-    assert slices == ((1000, 1800),)
-    slices = genome.contig_slices(coords.with_contigs(["chr1", "chr10"]).spatial)
-    assert slices == (
-        (0, 1000),
-        (1800, 2400),
-    )
-    slices = genome.contig_slices(coords.with_contigs(["chr2", "chr10"]).spatial)
-    assert slices == ((1000, 2400),)
 
 
 def test_coordinates_with_contigs(coords, genome):
@@ -270,11 +307,14 @@ def ds(store, sampleset_info, sample_sets):
 def coordinate_args(ds):
     return ds
 
+@pytest.fixture(params=["with_sample_sets", "no_sample_sets"])
+def legacy_coords(make_datastore_path, request):
+    if request.param == "with_sample_sets":
+        path = make_datastore_path(sample_sets=_helpers.sample_sets())
+    elif request.param == "no_sample_sets":
+        path = make_datastore_path()
+    return Coordinates(DataStore(path))
 
-@pytest.fixture
-def legacy_coords(coordinate_args):
-    ds = coordinate_args
-    return Coordinates(datastore=ds)
 
 
 @pytest.fixture
