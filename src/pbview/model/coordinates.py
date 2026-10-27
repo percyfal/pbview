@@ -27,14 +27,6 @@ from pbview._compat import _warn_shim
 xr.set_options(display_expand_attrs=False)
 
 
-def _normalize_labels(labels) -> tuple[str, ...] | None:
-    """User-facing normalization: None or empty -> None (no filter)."""
-    if labels is None:
-        return None
-    labels = tuple(labels)
-    return labels or None
-
-
 @dataclass(frozen=True)
 class SpatialSelection:
     """A selection over the spatial axis of a track.
@@ -51,10 +43,14 @@ class SpatialSelection:
 
     """
 
-    contigs: list[str] | None = None
+    contigs: tuple[str, ...] | None = None
 
     def __post_init__(self):
-        object.__setattr__(self, "contigs", _normalize_labels(self.contigs))
+        if self.contigs is None:
+            return None
+        if isinstance(self.contigs, str):
+            raise TypeError("contigs must be a sequence of names, not a str")
+        object.__setattr__(self, "contigs", tuple(self.contigs))
 
 
 @dataclass(frozen=True)
@@ -263,21 +259,19 @@ class Coordinates:
     )
 
     def __post_init__(self):
+        # SHIM: legacy mask derived from spatial
+        if self._contig_selected is None:
+            genome = self.datastore.genome
+            selected = genome.resolve_contigs(self.spatial)
+            mask = np.isin(np.asarray(genome.contigs), selected)
+            object.__setattr__(self, "_contig_selected", mask)
         sample = self._sample_selected
-        contigs = self._contig_selected
         object.__setattr__(
             self,
             "_sample_selected",
             np.ones(self.n_samples_all, dtype=bool)
             if sample is None
             else np.asarray(sample, dtype=bool),
-        )
-        object.__setattr__(
-            self,
-            "_contig_selected",
-            np.ones(self.n_contigs_all, dtype=bool)
-            if contigs is None
-            else np.asarray(contigs, dtype=bool),
         )
 
     def __hash__(self) -> int:
@@ -348,20 +342,11 @@ class Coordinates:
         contigs: Iterable[str] | None = None,
     ) -> "Coordinates":
         """Select contigs. None or empty means the whole genome."""
-        new = replace(self, spatial=replace(self.spatial, contigs=contigs))
-
-        # SHIM: keep legacy mask until readers use selected_contigs(genome)
-        if self._contig_selected is not None:
-            selected = new.spatial.contigs
-            if selected is not None:
-                unknown = set(selected) - set(self.contigs_all.tolist())
-                if unknown:
-                    raise ValueError(f"Unknown contigs: {sorted(unknown)}")
-                keep = np.isin(self.contigs_all, selected)
-            else:
-                keep = np.ones_like(self._contig_selected)
-            new = replace(new, _contig_selected=keep)
-        return new
+        return replace(
+            self,
+            spatial=SpatialSelection(contigs),
+            _contig_selected=None,  # SHIM: re-derived in __post_init__
+        )
 
     def with_all_contigs(
         self,
@@ -391,10 +376,6 @@ class Coordinates:
             np.isin(self.sample_set_membership_all, sample_sets) & self._sample_selected
         )
         return self._replace(sample_selected=keep)
-
-    def replace_contigs(self, names):
-        selected_contigs = np.isin(self.contigs_all, names)
-        return self._with_contig_selected(selected_contigs)
 
     def reset(self, *, samples: bool = True, contigs: bool = True) -> "Coordinates":
         """Return a new Coordinates with selection masks reset (nothing hidden)."""
