@@ -102,6 +102,7 @@ class TrackIndicatorCoverageTable(TrackIndicatorTableBase):
             stats = hist_stats(counts, bins)
             included_coverage = (bins >= lo / n) & (bins <= up / n)
             accessible = int(counts[included_coverage].sum())
+            genome = coord.datastore.genome  # SHIM: remove with Coordinates.datastore
             rows.append(
                 {
                     "sample_set": s,
@@ -110,8 +111,8 @@ class TrackIndicatorCoverageTable(TrackIndicatorTableBase):
                     "upper": up,
                     "upper_by_sample": up / coord.with_sample_sets([s]).n_samples,
                     "accessible_bp": accessible,
-                    "frac_active_genome": accessible / coord.genome_size,
-                    "frac_full_genome": accessible / coord.genome_size_all,
+                    "frac_active_genome": accessible / genome.size,
+                    "frac_full_genome": accessible / genome.size,
                     "median": stats["median"],
                     "mean": stats["mean"],
                     "60%": stats["mean"] * 0.6,
@@ -153,6 +154,7 @@ class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
             max_missing_samples = miss[i]
             included_missing = bins <= max_missing_samples
             accessible = int(counts[included_missing].sum())
+            genome = coord.datastore.genome  # SHIM: remove with Coordinates.datastore
             rows.append(
                 {
                     "sample_set": s,
@@ -160,8 +162,8 @@ class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
                     "max_missing_samples_by_sample": max_missing_samples
                     / coord.with_sample_sets([s]).n_samples,
                     "accessible_bp": accessible,
-                    "frac_active_genome": accessible / coord.genome_size,
-                    "frac_full_genome": accessible / coord.genome_size_all,
+                    "frac_active_genome": accessible / genome.size,
+                    "frac_full_genome": accessible / genome.size,
                 }
             )
         return pd.DataFrame(rows)

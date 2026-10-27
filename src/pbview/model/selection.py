@@ -57,10 +57,13 @@ class SelectionStateBase(param.Parameterized):
         self.param.active_track.objects = tracks
         self.active_track = active_track if active_track in tracks else tracks[0]
 
+    def _genome(self):
+        return self.coord.datastore.genome  # SHIM: remove with Coordinates.datastore
+
     @param.depends("lower", "upper", "samples", "contigs", watch=True)
     def _recompute_coord(self):
         self.coord = self._filtered(
-            self.coord.base_coord,
+            self.coord.reset(),
             self.lower,
             self.upper,
             tuple(self.samples),
@@ -76,22 +79,23 @@ class SelectionStateBase(param.Parameterized):
         samples: tuple[str, ...],
         contigs: tuple[str, ...],
     ) -> Coordinates:
-        keep = base.datastore.genome.contigs_in_length_range(lower=lower, upper=upper)
-        if keep is not None:
-            contigs = [c for c in contigs if c in keep]
-        else:
-            contigs = ()
-        return base.with_samples(samples=samples or None).with_contigs(
-            contigs=contigs or None
+        genome = base.datastore.genome  # SHIM: remove with Coordinates.datastore
+        keep = genome.contigs_in_length_range(lower, upper, contigs=contigs or None)
+        return base.with_samples(samples=samples or None).with_contigs(keep)
+
+    def _current(self) -> Coordinates:
+        return self._filtered(
+            self.coord, self.lower, self.upper, tuple(self.samples), tuple(self.contigs)
         )
 
     @param.depends("lower", "upper", "contigs", watch=True)
     def _apply_contig_filters(self):
         """Push contig length param changes into the mutable coord object."""
-        keep = self.coord.datastore.genome.contigs_in_length_range(
-            lower=self.lower, upper=self.upper
+        requested = tuple(self.contigs) or None
+        genome = self.coord.datastore.genome  # SHIM: remove with Coordinates.datastore
+        keep = genome.contigs_in_length_range(
+            lower=self.lower, upper=self.upper, contigs=requested
         )
-
         self.coord.with_contigs(contigs=keep)
 
     @param.depends("samples", watch=True)
@@ -101,10 +105,11 @@ class SelectionStateBase(param.Parameterized):
 
     @param.depends("lower", "upper", "contigs")
     def contigs_df(self):
+        regions = self._genome().contig_regions(self._current().spatial)
         return pd.DataFrame(
             {
-                "contig": self.coord.contigs,
-                "contig_len": self.coord.contig_len,
+                "contig": [c for c, _ in regions],
+                "contig_len": np.array([e for _, _, e in regions], dtype=np.int64),
             }
         )
 

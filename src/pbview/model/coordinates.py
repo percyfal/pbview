@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-import pyranges1 as pr
 import xarray as xr
 
 if TYPE_CHECKING:
@@ -166,10 +165,15 @@ class Genome:
         return np.asarray(self.offsets[1:]) - np.asarray(self.offsets[:-1])
 
     def contigs_in_length_range(
-        self, lower: int = 0, upper: float = np.inf
+        self,
+        lower: int = 0,
+        upper: float = np.inf,
+        contigs: Iterable[str] | None = None,
     ) -> tuple[str, ...]:
-        keep = (self.lengths >= lower) & (self.lengths <= upper)
-        return tuple(np.asarray(self.contigs)[keep])
+        idx = self.contig_indices(contigs)
+        lengths = self.lengths[idx]
+        keep = (lengths >= lower) & (lengths <= upper)
+        return tuple(self.contigs[i] for i in idx[keep])
 
     def span(self, contig: str) -> tuple[int, int]:
         """Return the start and end positions for a given contig."""
@@ -251,17 +255,8 @@ class Coordinates:
     _sample_selected: npt.NDArray[np.bool_] | None = field(
         default=None, repr=False, compare=False
     )
-    _contig_selected: npt.NDArray[np.bool_] | None = field(
-        default=None, repr=False, compare=False
-    )
 
     def __post_init__(self):
-        # SHIM: legacy mask derived from spatial
-        if self._contig_selected is None:
-            genome = self.datastore.genome
-            selected = genome.resolve_contigs(self.spatial)
-            mask = np.isin(np.asarray(genome.contigs), selected)
-            object.__setattr__(self, "_contig_selected", mask)
         sample = self._sample_selected
         object.__setattr__(
             self,
@@ -271,42 +266,30 @@ class Coordinates:
             else np.asarray(sample, dtype=bool),
         )
 
-    def __hash__(self) -> int:
-        return hash(
-            (
-                self.datastore.id,
-                id(self.samples_all),
-                id(self.contigs_all),
-                id(self.offsets),
-                self._sample_selected.tobytes(),
-                self._contig_selected.tobytes(),
-            )
+    def _key(self) -> tuple:
+        return (
+            self.datastore.id,  # SHIM: remove with datastore
+            self.spatial,  # final
+            self._sample_selected.tobytes(),  # SHIM: remove with samples
         )
 
+    def __hash__(self) -> int:
+        return hash(self._key())
+
     def __eq__(self, other):
-        return all(
-            (
-                self.datastore.id == other.datastore.id,
-                id(self.samples_all) == id(other.samples_all),
-                id(self.contigs_all) == id(other.contigs_all),
-                id(self.offsets) == id(other.offsets),
-                np.array_equal(self._sample_selected, other._sample_selected),
-                np.array_equal(self._contig_selected, other._contig_selected),
-            )
-        )
+        if not isinstance(other, Coordinates):
+            return NotImplemented
+        return self._key() == other._key()
 
     def _replace(
         self,
         *,
         sample_selected: npt.NDArray[np.bool_] | None = None,
-        contig_selected: npt.NDArray[np.bool_] | None = None,
     ) -> "Coordinates":
         """Return a new instance sharing raw data, with new selection arrays."""
         changes = {}
         if sample_selected is not None:
             changes["_sample_selected"] = np.asarray(sample_selected, dtype=bool)
-        if contig_selected is not None:
-            changes["_contig_selected"] = np.asarray(contig_selected, dtype=bool)
         new = replace(self, **changes)
         return new
 
@@ -323,19 +306,6 @@ class Coordinates:
         return None
 
     # Factory methods
-    def with_length_filter(
-        self, lower: int = 0, upper: float = np.inf
-    ) -> "Coordinates":
-        """Return a new Coordinates whose contigs satisfy lower <= len <= upper."""
-        # SHIM: bridge; callers move to coords.with_contigs(...) with
-        # genome-side filtering
-        _warn_shim("Coordinates.with_length_filter", "Genome.contigs_in_length_range")
-        genome = self.datastore.genome
-        keep = set(genome.contigs_in_length_range(lower=lower, upper=upper))
-        return self.with_contigs(
-            tuple(c for c in self.selected_contigs(genome) if c in keep)
-        )
-
     def with_contigs(
         self,
         contigs: Iterable[str] | None = None,
@@ -344,14 +314,7 @@ class Coordinates:
         return replace(
             self,
             spatial=SpatialSelection(contigs),
-            _contig_selected=None,  # SHIM: re-derived in __post_init__
         )
-
-    def with_all_contigs(
-        self,
-        contigs: Iterable[str] | None = None,
-    ) -> "Coordinates":
-        return self._replace(contig_selected=np.ones_like(self._contig_selected))
 
     def with_samples(
         self,
@@ -383,14 +346,6 @@ class Coordinates:
         )  # SHIM: becomes Coordinates() in (f)
 
     @property
-    def base_coord(self) -> "Coordinates":
-        """Return a new Coordinates with selection masks on (nothing hidden)."""
-        return self._replace(
-            sample_selected=np.ones_like(self._sample_selected),
-            contig_selected=np.ones_like(self._contig_selected),
-        )
-
-    @property
     def samples_all(self) -> npt.NDArray:
         """All samples in the dataset"""
         return self.datastore.samples
@@ -400,80 +355,9 @@ class Coordinates:
         return self.datastore.n_samples
 
     @property
-    def contigs_all(self) -> npt.NDArray:
-        """All contigs in the dataset"""
-        return self.datastore.contigs
-
-    @property
-    def n_contigs_all(self) -> int:
-        return self.datastore.n_contigs
-
-    @property
     def offsets(self) -> npt.NDArray:
         """Contig offsets"""
         return self.datastore.offsets
-
-    @cached_property
-    def _contig_len_all(self) -> npt.NDArray[np.uint32]:
-        return np.diff(self.offsets).astype(np.uint32)
-
-    @property
-    def contig_len_all(self):
-        return self._contig_len_all
-
-    @property
-    def contig_len(self):
-        _warn_shim("Coordinates.contig_len", "selected_contigs(genome)")
-        return self._contig_len_all[self._contig_selected]
-
-    @property
-    def contig_selection_is_active(self) -> bool:
-        _warn_shim("Coordinates.contig_selection_is_active", "selected_contigs(genome)")
-        return bool(np.any(self._contig_selected))
-
-    @property
-    def contig_idx(self) -> dict:
-        """Return a dict mapping of chromosome to index.
-        Returns the mapping for the full set of contigs"""
-        return {c: i for i, c in enumerate(self.contigs_all)}
-
-    @cached_property
-    def contig_indices(self) -> npt.NDArray[np.int64]:
-        """Original-vector indices of currently selected contigs."""
-        _warn_shim("Coordinates.contig_indices", "selected_contigs(genome)")
-        return np.flatnonzero(self._contig_selected).astype(np.int64)
-
-    def contig_slices(self, contigs: list | None = None) -> list[np.array[int]] | None:
-        """Return a list of reduced slices mapped to position coordinates."""
-        if contigs is None:
-            if self.contig_indices.size == 0:
-                return []
-            contig_indices = self.contig_indices
-        else:
-            contig_indices = np.searchsorted(self.contigs_all, contigs)
-        slices = (
-            pr.PyRanges(
-                {
-                    "Start": self.offsets[:-1][contig_indices],
-                    "End": self.offsets[1:][contig_indices],
-                    "Chromosome": "Placeholder",
-                }
-            )
-            .merge_overlaps(slack=1)[["Start", "End"]]
-            .to_numpy()
-            .tolist()
-        )
-        return list(map(tuple, slices))
-
-    @property
-    def contig_selected(self):  # SHIM
-        _warn_shim("Coordinates.contig_selected", "selected_contigs(genome)")
-        return self._contig_selected
-
-    @property
-    def contig_excluded(self):
-        _warn_shim("Coordinates.contig_excluded", "selected_contigs(genome)")
-        return ~self._contig_selected
 
     @property
     def sample_selected(self):  # SHIM
@@ -484,20 +368,9 @@ class Coordinates:
     def sample_excluded(self):
         return ~self._sample_selected
 
-    # FIXME: Return self.spatial.contigs to show *raw* user selection;
-    # if None, return self.datastore.contigs.
-    @property
-    def contigs(self):
-        _warn_shim("Coordinates.contigs", "selected_contigs(genome)")
-        return self.contigs_all[self._contig_selected]
-
     def selected_contigs(self, genome: Genome) -> tuple[str, ...]:
         """Currently selected contigs"""
         return genome.resolve_contigs(self.spatial)
-
-    @property
-    def n_contigs(self):
-        return self.contigs.size
 
     @property
     def samples(self) -> Any:
@@ -571,16 +444,6 @@ class Coordinates:
         """Return True if there are any sample sets other than the default set."""
         return self.datastore.has_sample_sets
 
-    @cached_property
-    def genome_size(self):
-        """Return the selected genome size. This is not a fixed entity"""
-        return np.sum(self.contig_len, dtype=np.int64)
-
-    @property
-    def genome_size_all(self):
-        """Return the total genome size, including all contigs"""
-        return np.sum(self.contig_len_all, dtype=np.int64)
-
     def sample_set_membership_dataframe(self, *, active_only=False) -> pd.DataFrame:
         df = pd.DataFrame(
             {
@@ -612,50 +475,4 @@ class Coordinates:
             .groupby("sample_set")
             .agg({"active": "sum", "sample": "count"})
             .rename({"active": "Active", "sample": "Total"}, axis=1)
-        )
-
-    def coordinates_dataframe(self) -> pd.DataFrame:
-        return pd.DataFrame(
-            [
-                [self.n_contigs, self.n_contigs_all],
-                [self.n_samples, self.n_samples_all],
-            ],
-            columns=["Active", "Total"],
-            index=["Contigs", "Samples"],
-        )
-
-    def to_dataframe(self) -> pd.DataFrame:
-        """Return DataFrame summary of active samples, contigs and sample sets."""
-        return pd.concat(
-            [self.coordinates_dataframe(), self.sample_set_summary()],
-            keys=["Coordinates", "Sample sets"],
-            names=["Type", "Label"],
-        )
-
-    def _contigs_dataframe(self) -> pd.DataFrame:
-        return pd.DataFrame(
-            {
-                "contig": self.contigs,
-                "contig_len": self.contig_len,
-            }
-        )
-
-    def summary(self) -> pd.DataFrame:
-        """Return a data frame summary of coordinate selection relative to
-        base coordinates."""
-        return pd.DataFrame(
-            [
-                {
-                    "genome_size_all": self.genome_size_all,
-                    "genome_size": self.genome_size,
-                    "genome_size (%)": np.round(
-                        self.genome_size / self.genome_size_all * 100.0, 2
-                    ),
-                    "n_contigs": f"{self.n_contigs}/{self.n_contigs_all}",
-                    "n_samples": f"{self.n_samples}/{self.n_samples_all}",
-                    "n_sample_set_membership": (
-                        f"{self.n_user_sample_sets}/{self.n_user_sample_sets_all}"
-                    ),
-                }
-            ]
         )

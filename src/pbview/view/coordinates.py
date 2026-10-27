@@ -12,12 +12,24 @@ __date__ = "2026-09-01"
 import hvplot.pandas  # noqa
 import numpy as np
 import panel as pn
+import pandas as pd
 from panel.viewable import Viewer
+from typing import TYPE_CHECKING
 
 from pbview import config
 from pbview.model.selection import SelectionStateBase
 
+if TYPE_CHECKING:
+    from pbview.model.coordinates import Coordinates
+    from pbview.model.datastore import DataStore
+
+
 pn.extension("tabulator")
+
+
+def selection_overview(coords: Coordinates, ds: DataStore) -> pd.DataFrame:  # noqa
+    # REFACTOR: reimplement from genome + resolve_for (see REFACTOR.md)
+    return pd.DataFrame(columns=["Active", "Total", "Type"])
 
 
 class CoordinatesView(Viewer):
@@ -33,12 +45,14 @@ class CoordinatesView(Viewer):
             state.param.upper, name="Max contig length", sizing_mode="stretch_width"
         )
 
+        # FIXME: currently shows total size for all contigs
+        genome = self.state.coord.datastore.genome  # SHIM: remove with datastore
         self.genome_size_pane = pn.bind(
             lambda *_: pn.Column(
                 pn.indicators.LinearGauge(
                     label="Genome size",
-                    value=self.state.coord.genome_size,
-                    bounds=(0, self.state.coord.genome_size_all),
+                    value=genome.size,
+                    bounds=(0, genome.size),
                     horizontal=True,
                     format="{value} bp",
                     width=120,
@@ -46,9 +60,7 @@ class CoordinatesView(Viewer):
                 ),
                 pn.indicators.LinearGauge(
                     value=np.round(
-                        self.state.coord.genome_size
-                        / self.state.coord.genome_size_all
-                        * 100,
+                        genome.size / genome.size * 100,
                         2,
                     ),
                     bounds=(0, 100),
@@ -67,7 +79,9 @@ class CoordinatesView(Viewer):
 
         self.summary_pane = pn.bind(
             lambda *_: pn.widgets.Tabulator(
-                state.summary_df(), groupby=["Type"], hidden_columns=["Type"]
+                selection_overview(state.coord, state.coord.datastore),
+                groupby=["Type"],
+                hidden_columns=["Type"],
             ),
             state.param.lower,
             state.param.upper,

@@ -26,6 +26,7 @@ def compute_track_sum(track: Track, base_coord: Coordinates) -> xr.Dataset:
     Returns:
         Dataset containing the computed sums for each sample set.
     """
+    genome = base_coord.datastore.genome  # SHIM: remove with Coordinates.datastore
     logger.info(f"Computing sums for {base_coord.n_sample_sets} sample sets")
     data = xr.concat(
         [
@@ -43,8 +44,8 @@ def compute_track_sum(track: Track, base_coord: Coordinates) -> xr.Dataset:
     ds_out = xr.Dataset(
         data_vars={"values": data.chunk({"sample_set": -1, "position": 1_000_000})},
         coords={
-            "offsets": base_coord.offsets,
-            "contigs": base_coord.contigs_all,
+            "offsets": np.array(genome.offsets),
+            "contigs": np.array(genome.contigs),
             "sample_set": base_coord.sample_set_names,
         },
     )
@@ -65,6 +66,7 @@ def compute_track_missingness(
     Returns:
         Dataset containing the computed sums for each sample set.
     """
+    genome = base_coord.datastore.genome  # SHIM: remove with Coordinates.datastore
     logger.info(f"Computing missingness for {base_coord.n_sample_sets} sample sets")
     data = xr.concat(
         [
@@ -85,8 +87,8 @@ def compute_track_missingness(
     ds_out = xr.Dataset(
         data_vars={"values": data.chunk({"sample_set": -1, "position": 1_000_000})},
         coords={
-            "offsets": base_coord.offsets,
-            "contigs": base_coord.contigs_all,
+            "offsets": np.array(genome.offsets),
+            "contigs": np.array(genome.contigs),
             "sample_set": base_coord.sample_set_names,
         },
     )

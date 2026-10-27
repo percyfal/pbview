@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from pbview.model.coordinates import Genome
+from pbview.model.coordinates import Genome, SpatialSelection
 from pbview.model.datastore import DataStore
 from pbview.model.selection import make_selection_state_class
 
@@ -28,11 +28,13 @@ def defaults():
     }
 
 
+# FIXME: deprecate
 @pytest.fixture()
 def ds(store, sampleset_info):
     return DataStore(path=store, sampleset_info=sampleset_info)
 
 
+# FIXME: use full_ds
 @pytest.fixture()
 def state(ds, defaults):
     cls = make_selection_state_class(ds.base_coord, defaults=defaults)
@@ -113,3 +115,13 @@ def test_contigs_and_length_filters(state, args, expected):
         len(state.coord.datastore.genome.resolve_contigs(state.coord.spatial))
         == expected["n_contigs"]
     )
+
+
+def test_filter_with_empty_picker_applies_length(state):
+    state.contigs, state.lower = [], 950_000
+    assert state._current().spatial.contigs == ("chr1",)  # not None/all
+
+
+def test_filter_nothing_passes_is_empty(state):
+    state.contigs, state.lower = [], 10**9
+    assert state._current().spatial == SpatialSelection(())

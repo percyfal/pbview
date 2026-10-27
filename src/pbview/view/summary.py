@@ -108,15 +108,15 @@ class SummaryPage(pn.viewable.Viewer):
             if self._suspend:
                 return
             if not new:
-                all_contigs = list(self.state.coord.contigs_all)
-                if set(all_contigs) == set(self.state.contigs):
+                all_contigs = list(self.state.coord.datastore.genome.contigs)
+                if set(all_contigs) == set(self.state.coord.spatial.contigs):
                     return
-                self.state.contigs = all_contigs
+                self.state.coords.spatial.contigs = all_contigs
                 return
             contigs = sorted(set(self._source.data["contig"][i] for i in new))
-            if set(contigs) == set(self.state.coord.contigs):
+            if set(contigs) == set(self.state.coord.spatial.contigs):
                 return
-            self.state.contigs = contigs
+            self.state.coord.spatial.contigs = contigs
 
         except Exception:
             import traceback
@@ -125,9 +125,16 @@ class SummaryPage(pn.viewable.Viewer):
 
     def _contig_scatter_df(self):
         coord = self.state.coord
-        names = coord.contigs_all
-        lengths = coord.contig_len_all
-        selected = np.asarray(coord.contig_selected, dtype=np.int8) / 2 + 0.3
+        genome = coord.datastore.genome  # SHIM: coord.datastore.genome
+        names = list(genome.contigs)
+        lengths = genome.lengths
+        selected = (
+            np.asarray(
+                genome.contig_indices(coord.selected_contigs(genome)), dtype=np.int8
+            )
+            / 2
+            + 0.3
+        )
         dflist = []
         for s in coord.sample_set_names:
             means = self.track._pre.contig_mean_coverage(s)
