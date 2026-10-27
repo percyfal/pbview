@@ -321,6 +321,7 @@ class Track:
             Histogram, bins as a numpy arrays
         """
         bins = np.arange(0, coord.n_samples + 1)
+        print(bins, coord, missing_cutoff)
         return self._missingness_hist_cached(
             tuple(bins.tolist()), coord, missing_cutoff
         )

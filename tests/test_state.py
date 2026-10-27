@@ -1,16 +1,15 @@
 import numpy as np
 import pytest
 
-from pbview.model.coordinates import Genome, SpatialSelection
-from pbview.model.datastore import DataStore
+from pbview.model.coordinates import Coordinates, Genome, SpatialSelection
 from pbview.model.selection import make_selection_state_class
 
 
 @pytest.fixture()
 def genome():
     return Genome(
-        contigs=["chr1", "chr2", "chr3"],
-        offsets=[0, 1_000_000, 1_900_000, 2_700_000],
+        contigs=["chr1", "chr2", "chr10"],
+        offsets=[0, 10, 18, 24],
     )
 
 
@@ -28,48 +27,49 @@ def defaults():
     }
 
 
-# FIXME: deprecate
 @pytest.fixture()
-def ds(store, sampleset_info):
-    return DataStore(path=store, sampleset_info=sampleset_info)
-
-
-# FIXME: use full_ds
-@pytest.fixture()
-def state(ds, defaults):
-    cls = make_selection_state_class(ds.base_coord, defaults=defaults)
-    return cls(datastore=ds)
+def state(full_ds, defaults):
+    coord = Coordinates(full_ds)
+    full_ds.missing_cutoffs = [3]  # FIXME: Hack to avoid missing_cutoffs
+    cls = make_selection_state_class(coord, defaults=defaults)
+    return cls(datastore=full_ds)
 
 
 @pytest.mark.parametrize(
     "args,expected",
     [
-        ({"lower": 950_000}, {"genome_size": 1_000_000, "n_contigs": 1}),
+        ({"lower": 9}, {"genome_size": 10, "n_contigs": 1}),
         (
-            {"upper": 950_000},
-            {"genome_size": 1_700_000, "n_contigs": 2},
+            {"upper": 9},
+            {"genome_size": 14, "n_contigs": 2},
         ),
         (
-            {"lower": 850_000, "upper": 950_000},
-            {"genome_size": 900_000, "n_contigs": 1},
+            {"lower": 7, "upper": 9},
+            {"genome_size": 8, "n_contigs": 1},
         ),
     ],
 )
-@pytest.mark.skip("FIXME: update length filter to use Genome.contigs_in_length_range")
 def test_length_filters(state, args, expected):
+    genome = state.datastore.genome
     for k, v in args.items():
         setattr(state, k, v)
+    pi = genome.resolve(state.coord.spatial)
     for k, v in expected.items():
-        assert getattr(state.coord, k) == v
+        if k == "genome_size":
+            assert pi.n_positions == v
+        elif k == "n_contigs":
+            assert len(genome.resolve_contigs(state.coord.spatial)) == v
+        else:
+            assert getattr(state.coord, k) == v
 
 
 @pytest.mark.parametrize(
     "args,expected",
     [
-        ({"contigs": []}, {"genome_size": 2_700_000, "n_contigs": 3}),
-        ({"contigs": ["chr1"]}, {"genome_size": 1_000_000, "n_contigs": 1}),
-        ({"contigs": ["chr2"]}, {"genome_size": 900_000, "n_contigs": 1}),
-        ({"contigs": ["chr1", "chr2"]}, {"genome_size": 1_900_000, "n_contigs": 2}),
+        ({"contigs": []}, {"genome_size": 24, "n_contigs": 3}),
+        ({"contigs": ["chr1"]}, {"genome_size": 10, "n_contigs": 1}),
+        ({"contigs": ["chr2"]}, {"genome_size": 8, "n_contigs": 1}),
+        ({"contigs": ["chr1", "chr2"]}, {"genome_size": 18, "n_contigs": 2}),
     ],
 )
 def test_contigs_filter(state, args, expected, genome):
@@ -78,9 +78,8 @@ def test_contigs_filter(state, args, expected, genome):
     assert len(genome.resolve_contigs(state.coord.spatial)) == expected["n_contigs"]
 
 
-@pytest.mark.skip("FIXME: app must set the default list first")
 def test_contigs_filter_unknown_raises(state):
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         state.contigs = ["chr4"]
 
 
@@ -89,19 +88,19 @@ def test_contigs_filter_unknown_raises(state):
     [
         (
             {"contigs": [], "lower": 0, "upper": np.inf},
-            {"genome_size": 2_700_000, "n_contigs": 3},
+            {"genome_size": 24, "n_contigs": 3},
         ),
         (
-            {"contigs": ["chr1", "chr2"], "lower": 950_000, "upper": np.inf},
-            {"genome_size": 1_000_000, "n_contigs": 1},
+            {"contigs": ["chr1", "chr2"], "lower": 9, "upper": np.inf},
+            {"genome_size": 10, "n_contigs": 1},
         ),
         (
-            {"contigs": ["chr2", "chr3"], "lower": 0, "upper": 850_000},
-            {"genome_size": 800_000, "n_contigs": 1},
+            {"contigs": ["chr2", "chr10"], "lower": 0, "upper": 7},
+            {"genome_size": 6, "n_contigs": 1},
         ),
         (
-            {"contigs": ["chr1", "chr2", "chr3"], "lower": 850_000, "upper": 950_000},
-            {"genome_size": 900_000, "n_contigs": 1},
+            {"contigs": ["chr10", "chr2", "chr1"], "lower": 7, "upper": 9},
+            {"genome_size": 8, "n_contigs": 1},
         ),
     ],
 )
@@ -118,7 +117,7 @@ def test_contigs_and_length_filters(state, args, expected):
 
 
 def test_filter_with_empty_picker_applies_length(state):
-    state.contigs, state.lower = [], 950_000
+    state.contigs, state.lower = [], 9
     assert state._current().spatial.contigs == ("chr1",)  # not None/all
 
 
