@@ -100,6 +100,18 @@ class ColumnSelection:
         return ColumnSelection(column_dim=target_dim, selected=None)
 
 
+def _merge_adjacent(
+    starts: np.ndarray, ends: np.ndarray
+) -> tuple[tuple[int, int], ...]:
+    """Merge sorted, disjoint intervals"""
+    if starts.size == 0:
+        return ()
+    breaks = np.flatnonzero(starts[1:] != ends[:-1]) + 1
+    run_starts = starts[np.r_[0, breaks]]
+    run_ends = ends[np.r_[breaks - 1, starts.size - 1]]
+    return tuple(zip(run_starts.tolist(), run_ends.tolist()))
+
+
 @dataclass(frozen=True)
 class Genome:
     contigs: tuple[str, ...]
@@ -114,6 +126,10 @@ class Genome:
                 f"{len(self.contigs)} contigs and {len(self.offsets)} offsets"
             )
 
+    @cached_property
+    def _offsets_arr(self) -> np.ndarray:
+        return np.asarray(self.offsets, dtype=np.int64)
+
     @property
     def size(self):
         """Size of genome in bp"""
@@ -123,25 +139,37 @@ class Genome:
     def _contig_index(self) -> dict[str, int]:
         return {c: i for i, c in enumerate(self.contigs)}
 
+    # FIXME: this function is obsolete (replaced by _contig_index)
     def _index(self, contig: str) -> int:
         try:
             return self.contigs.index(contig)
         except ValueError:
             raise KeyError(f"unknown contig {contig!r}")
 
-    def contig_indices(self, contigs: list[str] | None = None):
+    def contig_indices(self, contigs: Iterable[str] | None = None) -> np.ndarray:
         if contigs is None:
-            return np.arange(len(self.contigs))
+            return np.arange(len(self.contigs), dtype=np.intp)
+        contigs = tuple(contigs)
         unknown = [c for c in contigs if c not in self._contig_index]
         if unknown:
             raise KeyError(f"unknown contigs {unknown}")
-        return np.array(sorted([self._contig_index[c] for c in contigs]), dtype=np.intp)
+        return np.unique(
+            np.fromiter(
+                (self._contig_index[c] for c in contigs),
+                dtype=np.intp,
+                count=len(contigs),
+            )
+        )
 
-    def resolve_contigs(self, spatial: SpatialSelection) -> tuple[str, ...]:
-        """Resolve contig names"""
-        if spatial.contigs is None:
-            return self.contigs
-        return tuple(self.contigs[i] for i in self.contig_indices(spatial.contigs))
+    @property
+    def lengths(self) -> tuple[int, ...]:
+        return np.asarray(self.offsets[1:]) - np.asarray(self.offsets[:-1])
+
+    def contigs_in_length_range(
+        self, lower: int = 0, upper: float = np.inf
+    ) -> tuple[str, ...]:
+        keep = (self.lengths >= lower) & (self.lengths <= upper)
+        return tuple(np.asarray(self.contigs)[keep])
 
     def span(self, contig: str) -> tuple[int, int]:
         """Return the start and end positions for a given contig."""
@@ -151,43 +179,21 @@ class Genome:
     def resolve(self, sel: SpatialSelection) -> "PositionIntervals":
         """Resolve selection ranges"""
         idx = np.unique(self.contig_indices(sel.contigs))
-        offsets = np.asarray(self.offsets)
         return PositionIntervals(
-            tuple(zip(offsets[idx].tolist(), offsets[idx + 1].tolist()))
+            _merge_adjacent(self._offsets_arr[idx], self._offsets_arr[idx + 1])
         )
 
-    def as_pyranges(self, contigs: list[str] | None = None) -> pr.PyRanges:
-        contig_indices = self.contig_indices(contigs)
-        return pr.PyRanges(
-            {
-                "Start": np.array(self.offsets[:-1])[contig_indices],
-                "End": np.array(self.offsets[1:])[contig_indices],
-                "Chromosome": np.array(self.contigs)[contig_indices],
-            }
-        )
+    def resolve_contigs(self, spatial: SpatialSelection) -> tuple[str, ...]:
+        """Resolve contig names"""
+        if spatial.contigs is None:
+            return self.contigs
+        return tuple(self.contigs[i] for i in self.contig_indices(spatial.contigs))
 
-    def contig_slices(
-        self, sel: SpatialSelection | None = None
-    ) -> tuple[tuple[int, int]]:
-        data = self.resolve(sel).as_pyranges()
-        slices = data.merge_overlaps(slack=1)[["Start", "End"]].to_numpy().tolist()
-        return tuple(map(tuple, slices))
-
-    def resolve_intervals(self, position_intervals: PositionIntervals) -> pr.PyRanges:
-        """Convert position intervals to genome space including contig information.
-
-        Returns:
-            py.PyRanges: object with contig information assigned to
-                intervals in genome space (all contigs start from
-                position 0)
-        """
-        g = self.as_pyranges()
-        g["OriginalChromosome"] = g["Chromosome"].copy()
-        g["Chromosome"] = "Placeholder"
-        g = g.intersect_overlaps(position_intervals.as_pyranges())
-        g["Chromosome"] = g["OriginalChromosome"]
-        g = g.drop(["OriginalChromosome"], axis=1)
-        return g
+    # FIXME: Convert to generator if list is long?
+    def contig_regions(self, sel: SpatialSelection) -> tuple[tuple[str, int, int], ...]:
+        """Selected regions in contig-local, 0-based half-open coordinates"""
+        idx = self.contig_indices(sel.contigs)
+        return tuple((self.contigs[i], 0, int(self.lengths[i])) for i in idx)
 
 
 @dataclass(frozen=True)
@@ -214,15 +220,6 @@ class PositionIntervals:
     def apply(self, data: xr.Dataset) -> xr.Dataset:
         parts = [data.isel(position=slice(s, e)) for s, e in self.intervals]
         return parts[0] if len(parts) == 1 else xr.concat(parts, dim="position")
-
-    def as_pyranges(self) -> pr.PyRanges:
-        return pr.PyRanges(
-            {
-                "Start": [s for s, _ in self.intervals],
-                "End": [e for _, e in self.intervals],
-                "Chromosome": "Placeholder",
-            }
-        )
 
 
 @dataclass(frozen=True)
@@ -330,12 +327,14 @@ class Coordinates:
         self, lower: int = 0, upper: float = np.inf
     ) -> "Coordinates":
         """Return a new Coordinates whose contigs satisfy lower <= len <= upper."""
-        keep = (
-            (self._contig_len_all >= lower)
-            & (self._contig_len_all <= upper)
-            & self._contig_selected
+        # SHIM: bridge; callers move to coords.with_contigs(...) with
+        # genome-side filtering
+        _warn_shim("Coordinates.with_length_filter", "Genome.contigs_in_length_range")
+        genome = self.datastore.genome
+        keep = set(genome.contigs_in_length_range(lower=lower, upper=upper))
+        return self.with_contigs(
+            tuple(c for c in self.selected_contigs(genome) if c in keep)
         )
-        return self._replace(contig_selected=keep)
 
     def with_contigs(
         self,
@@ -377,12 +376,11 @@ class Coordinates:
         )
         return self._replace(sample_selected=keep)
 
-    def reset(self, *, samples: bool = True, contigs: bool = True) -> "Coordinates":
-        """Return a new Coordinates with selection masks reset (nothing hidden)."""
-        return self._replace(
-            sample_selected=(np.ones_like(self._sample_selected) if samples else None),
-            contig_selected=(np.ones_like(self._contig_selected) if contigs else None),
-        )
+    def reset(self) -> "Coordinates":
+        """Return Coordinates with no selections (all contigs, all columns)."""
+        return type(self)(
+            datastore=self.datastore
+        )  # SHIM: becomes Coordinates() in (f)
 
     @property
     def base_coord(self) -> "Coordinates":
@@ -582,16 +580,6 @@ class Coordinates:
     def genome_size_all(self):
         """Return the total genome size, including all contigs"""
         return np.sum(self.contig_len_all, dtype=np.int64)
-
-    def as_pyranges(self):
-        """Return pyranges object of active contigs"""
-        return pr.PyRanges(
-            {
-                "Chromosome": self.contigs,
-                "Start": np.zeros(self.n_contigs, dtype=np.int64),
-                "End": self.contig_len,
-            }
-        )
 
     def sample_set_membership_dataframe(self, *, active_only=False) -> pd.DataFrame:
         df = pd.DataFrame(
