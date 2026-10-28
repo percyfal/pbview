@@ -97,7 +97,6 @@ class DataStore:
         if self._has_sampleset_info:
             self._user_sample_set_membership.setflags(write=False)
 
-        self.base_coord = Coordinates(self)
         pb_track_names = self.store.keys()
         raw = xr.open_datatree(self._path, engine="zarr", chunks={})
         self.tracks = {
@@ -106,6 +105,7 @@ class DataStore:
             )  # SHIM: remove preprocess_data with PrecomputedTrack
             for name in sorted(pb_track_names)
         }
+        self.base_coord = Coordinates(self)
 
     def __repr__(self) -> str:
         return f"<DataStore(path={self._path}, tracks={self.tracks}, id={self.id[:8]})>"

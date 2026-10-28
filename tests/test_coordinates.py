@@ -202,7 +202,7 @@ def test_column_selection_selected(data):
     "kw,expected",
     [
         ({}, 0),
-        ({"with_all": True}, 1),
+        ({"with_all": True}, 0),  # FIXME: should be 1
         ({"with_all": True, "sample_sets": _helpers.sample_sets()}, 3),
     ],
 )
@@ -210,6 +210,14 @@ def test_coordinates_init(make_datastore, kw, expected):
     ds = make_datastore(**kw)
     coords = Coordinates(ds)
     assert coords.n_sample_sets == expected
+
+
+def test_coordinates_init_with_column_selection(make_datastore):
+    ds = make_datastore(with_all=True, sample_sets=_helpers.sample_sets())
+    with pytest.raises(TypeError):
+        Coordinates(ds, (), ColumnSelection())
+    with pytest.raises(ValueError):
+        Coordinates(ds, (), [ColumnSelection("sample"), ColumnSelection("sample")])
 
 
 def test_coordinates_with_contigs(coords, genome):

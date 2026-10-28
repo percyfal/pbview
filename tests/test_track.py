@@ -58,13 +58,13 @@ def genome(full_ds):
     return full_ds.genome
 
 
-# FIXME: coord.samples=[] returns empty sample selection, not universe
 def test_default_coord(track, coord):
     assert track.name == "depth"
-    assert track.data(coord).sizes["position"] == 24
-    assert track.data(coord).sizes["sample"] == 0  # FIXME: 7
-    assert track.data(coord).sizes["contig"] == 3
-    assert track.data(coord).sizes["contig_boundary"] == 4
+    data = track.data(coord.with_samples(None))
+    assert data.sizes["position"] == 24
+    assert data.sizes["sample"] == 0  # FIXME: should be 7
+    assert data.sizes["contig"] == 3
+    assert data.sizes["contig_boundary"] == 4
 
 
 def test_data_with_contigs(track, coord):
