@@ -8,7 +8,7 @@ __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
@@ -25,6 +25,42 @@ if TYPE_CHECKING:
 from pbview._compat import _warn_shim
 
 xr.set_options(display_expand_attrs=False)
+
+
+# Projection policy: (selection dim, track dim) pairs that project through a grouping.
+_PROJECTIONS = frozenset({("sample_set", "sample")})
+
+
+def resolve_columns(
+    selections: Iterable[ColumnSelection],
+    column_dim: str,
+    universe: Sequence[str],
+    grouping: xr.DataArray | None = None,
+) -> tuple[str, ...]:
+    """Labels of `colum_dim` selected by `selections` in universe order"""
+    universe = tuple(universe)
+    known = set(universe)
+    constraints: list[set[str]] = []
+    for sel in selections:
+        if sel.labels is None:
+            continue
+        if sel.column_dim == column_dim:
+            unknown = [label for label in sel.labels if label not in known]
+            if unknown:
+                raise ValueError(f"Unknown {column_dim} labels: {', '.join(unknown)}")
+            constraints.append(set(sel.labels))
+        elif (sel.column_dim, column_dim) in _PROJECTIONS:
+            if grouping is None:
+                raise ValueError(
+                    f"Cannot project {sel.column_dim} selection to "
+                    f"{column_dim} without a grouping"
+                )
+            constraints.append(set(sel.project_to(column_dim, grouping).labels))
+        # else: dim not expressed on this track; ignoring
+    if not constraints:
+        return universe
+    allowed = set.intersection(*constraints)
+    return tuple(c for c in universe if c in allowed)
 
 
 @dataclass(frozen=True)
@@ -237,6 +273,21 @@ class ResolvedSelection:
     labels: tuple[str, ...]  # explicit; empty means empty
 
 
+def _legacy_grouping(datastore) -> xr.DataArray | None:
+    # SHIM(samples): store-level grouping from track meta; delete on contract
+    groupings = [
+        t.grouping
+        for t in datastore.tracks.values()
+        if t.column_dim == "sample" and t.grouping is not None
+    ]
+    if not groupings:
+        return None
+    first = groupings[0]
+    if any(not g.equals(first) for g in groupings[1:]):
+        raise ValueError("tracks disagree on sample grouping")
+    return first
+
+
 @dataclass(frozen=True)
 class Coordinates:
     """Immutable class representation of active sample/contig
@@ -268,14 +319,21 @@ class Coordinates:
     )
 
     def __post_init__(self):
-        sample = self._sample_selected
-        object.__setattr__(
-            self,
-            "_sample_selected",
-            np.ones(self.n_samples_all, dtype=bool)
-            if sample is None
-            else np.asarray(sample, dtype=bool),
-        )
+        object.__setattr__(self, "column", tuple(self.column))
+        dims = [c.column_dim for c in self.column]
+        if len(dims) != len(set(dims)):
+            raise ValueError(f"duplicate column dims: {dims}")
+
+        # SHIM: legacy mask derived from column (single source of
+        # truth); delete on contract
+        if self._sample_selected is None:
+            samples = self.datastore.samples  # store-level universe, legacy order
+            labels = resolve_columns(
+                self.column, "sample", samples, _legacy_grouping(self.datastore)
+            )
+            object.__setattr__(
+                self, "_sample_selected", np.isin(np.asarray(samples), labels)
+            )
 
     def _key(self) -> tuple:
         return (
@@ -386,7 +444,7 @@ class Coordinates:
 
     @property
     def sample_selected(self):  # SHIM
-        _warn_shim("Coordinates.sample_selected", "resolve(track)")
+        _warn_shim("Coordinates.sample_selected", "resolve_for(track, genome)")
         return self._sample_selected
 
     @property

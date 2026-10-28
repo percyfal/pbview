@@ -105,6 +105,16 @@ def make_datastore_path(tmp_path, tiny_datatree):
 
 
 @pytest.fixture
+def make_datastore(make_datastore_path):
+    def _make(**kw):
+        path = make_datastore_path(**kw)
+        ds = DataStore(path)
+        return ds
+
+    return _make
+
+
+@pytest.fixture
 def datastore(make_datastore_path):
     path = make_datastore_path()
     return DataStore(path)

@@ -69,16 +69,16 @@ tuple[ColumnSelection, ...]` resolved by the track.
       str, `()` allowed)
 - [x] `column` is a hashable tuple; `column_for(dim)`; `_with_column`
       replaces by dim
-- [ ] `Coordinates.__post_init__` rejects bare `ColumnSelection` and
+- [x] `Coordinates.__post_init__` rejects bare `ColumnSelection` and
       duplicate dims
-- [ ] pure `resolve_columns(selections, column_dim, universe,
+- [x] pure `resolve_columns(selections, column_dim, universe,
       grouping)` + tests
-- [ ] `Track.resolve_columns(selections)`; `Coordinates.resolve_for`
+- [x] `Track.resolve_columns(selections)`; `Coordinates.resolve_for`
       composes
-- [ ] decide and pin both-dims policy (proposed: intersect)
-- [ ] `__post_init__` derives `_sample_selected` from `column` (no
+- [x] decide and pin both-dims policy (proposed: intersect)
+- [x] `__post_init__` derives `_sample_selected` from `column` (no
       `_sync_sample_mask`)
-- [ ] parity test (`# SHIM`); fix `sample_selected` warning text →
+- [x] parity test (`# SHIM`); fix `sample_selected` warning text →
       `resolve_for(track, genome)`
 - [ ] migrate: `reset`, `_filtered` / `SelectionStateBase`, `_key()`
       uses `column`, `Track._select` column half (bridge +
@@ -147,6 +147,6 @@ Remove `Coordinates.datastore`.
    nothing left for this step
 2. `pixi r test` and `pixi r test -- -W
    error::pbview._compat.ShimWarning`
-3. `pyright src tests`
+3. `pixi r lint`
 4. `git grep -nw` on every removed name: empty
 5. Start the app and run the CLI once; exercise the affected widgets

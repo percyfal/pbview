@@ -9,7 +9,7 @@ __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
@@ -26,6 +26,7 @@ from dask.diagnostics import ProgressBar
 
 from pbview import config
 from pbview.logging import app_logger as logger
+from pbview.model.coordinates import resolve_columns
 
 from ._identity import datatree_id
 from .chunking import optimal_chunks_dask
@@ -35,42 +36,6 @@ if TYPE_CHECKING:
 
 
 _THRESHOLD_RE = re.compile(r"^(?P<base>.+)_missing_cutoff=(?P<t>\d+)$")
-
-
-# Projection policy: (selection dim, track dim) pairs that project through a grouping.
-_PROJECTIONS = frozenset({("sample_set", "sample")})
-
-
-def resolve_columns(
-    selections: Iterable[ColumnSelection],
-    column_dim: str,
-    universe: Sequence[str],
-    grouping: xr.DataArray | None = None,
-) -> tuple[str, ...]:
-    """Labels of `colum_dim` selected by `selections` in universe order"""
-    universe = tuple(universe)
-    known = set(universe)
-    constraints: list[set[str]] = []
-    for sel in selections:
-        if sel.labels is None:
-            continue
-        if sel.column_dim == column_dim:
-            unknown = [label for label in sel.labels if label not in known]
-            if unknown:
-                raise ValueError(f"Unknown {column_dim} labels: {', '.join(unknown)}")
-            constraints.append(set(sel.labels))
-        elif (sel.column_dim, column_dim) in _PROJECTIONS:
-            if grouping is None:
-                raise ValueError(
-                    f"Cannot project {sel.column_dim} selection to "
-                    f"{column_dim} without a grouping"
-                )
-            constraints.append(set(sel.project_to(column_dim, grouping).labels))
-        # else: dim not expressed on this track; ignoring
-    if not constraints:
-        return universe
-    allowed = set.intersection(*constraints)
-    return tuple(c for c in universe if c in allowed)
 
 
 class PrecomputedTrack:
