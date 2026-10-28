@@ -1,0 +1,141 @@
+"""
+Grouping functionality.
+"""
+
+from __future__ import annotations
+
+__author__ = "Per Unneberg"
+__contact__ = "per.unneberg@scilifelab.se"
+__date__ = "2026-10-28"
+
+from collections.abc import Iterable, Mapping
+from types import MappingProxyType
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+GROUPING_NAME = "column_groupings"
+
+
+def grouping_sets_from_dataframe(
+    df: pd.DataFrame,
+    *,
+    column_dim: str,
+    group_dim: str,
+) -> Mapping[str, frozenset]:
+    """Convert a general grouping DataFrame to a mapping of group names to members.
+
+    Group members in `column_dim` and map them to names in `group_dim`. The
+    resulting mapping is immutable and can be used to create a grouping DataArray.
+
+    """
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError(f"Expected DataFrame, got {type(df)}")
+    if len(set([column_dim, group_dim]).difference(set(df.columns.values))) != 0:
+        raise ValueError(
+            f"Expected DataFrame containing columns ({column_dim}, "
+            f"{group_dim}), got {list(df.columns.values)}"
+        )
+    sets = {k: frozenset(v[column_dim]) for k, v in df.groupby(group_dim)}
+    return MappingProxyType(sets)
+
+
+def membership_from_sets(
+    columns: Iterable[str],
+    sets: Mapping[str, Iterable[str]],
+    *,
+    column_dim: str,
+    group_dim: str,
+) -> xr.DataArray:
+    """Determine membership of columns from sets."""
+    columns = tuple(columns)
+    members = {name: frozenset(m) for name, m in sets.items()}
+    unknown = set().union(*members.values()) - set(columns)
+    if unknown:
+        raise ValueError(f"Unknown {column_dim} labels in groups: {unknown}")
+    data = np.array(
+        [[col in members[group] for group in members] for col in columns],
+        dtype=bool,
+    ).reshape(len(columns), len(members))
+    return xr.DataArray(
+        data,
+        dims=(column_dim, group_dim),
+        coords={column_dim: list(columns), group_dim: list(members)},
+        name=GROUPING_NAME,
+    )
+
+
+def write_column_groupings(
+    store, track: str, groupings: Iterable[xr.DataArray]
+) -> None:
+    """Write membership to /{track}/_meta/column_groupings"""
+    groupings = tuple(groupings)
+    for g in groupings:
+        if g.ndim != 2:
+            raise ValueError(f"Grouping must be 2-d, got {g.dims}")
+    if not groupings:
+        return
+    ds = xr.merge(
+        [g.rename(f"{g.dims[1]}_membership") for g in groupings],
+        join="exact",
+    )
+    ds.to_zarr(store, group=f"{track}/_meta/{GROUPING_NAME}", mode="w")
+
+
+def validate_grouping(
+    grouping: xr.DataArray | None,
+    track_column_dim: str,
+    track_column_labels: np.ndarray,
+    track_dims: Iterable[str],
+) -> xr.DataArray | None:
+    if grouping is None:
+        return None
+    if grouping.ndim != 2 or grouping.dims[0] != track_column_dim:
+        raise ValueError(
+            f"grouping dims must be ({track_column_dim!r}, <group_dim>), "
+            f"got {grouping.dims}"
+        )
+    if grouping.dims[1] in set(track_dims):
+        raise ValueError(f"group dim {grouping.dims[1]!r} collides with a track dim")
+    if grouping.dtype != bool:
+        raise ValueError(f"grouping must be boolean, got {grouping.dtype}")
+    if not np.array_equal(grouping[track_column_dim].values, track_column_labels):
+        raise ValueError(f"grouping {track_column_dim!r} labels do not match the track")
+    return grouping
+
+
+def validate_track_groupings(
+    groupings: Iterable[xr.DataArray] | None,
+    track_column_dim: str,
+    track_column_labels: np.ndarray,
+    track_dims: Iterable[str],
+) -> Mapping[str, xr.DataArray]:
+    """Validate a list of track groupings.
+
+    A grouping is an xr.DataArray that maps the columns of a track (
+    source) to a set of groups (target). The source dimension must
+    have the same column dimension as the track, and the target
+    dimension must not collide with any of the track dimensions.
+
+    Args:
+        groupings: Iterable of xarray DataArrays representing groupings.
+        track_column_dim: The name of the column dimension in the track.
+        track_dims: Iterable of dimension names (row, column) in the track.
+
+    Returns:
+        A dictionary mapping grouping names to validated xarray DataArrays.
+    """
+    track_dims = tuple(track_dims)
+    out = dict[str, xr.DataArray]()
+    if groupings is None:
+        return MappingProxyType(out)
+    for g in groupings:
+        g = validate_grouping(g, track_column_dim, track_column_labels, track_dims)
+        if g is None:
+            continue
+        group_dim = g.dims[1]
+        if group_dim in out:
+            raise ValueError(f"Duplicate group dim {group_dim!r} in groupings")
+        out[group_dim] = g
+    return MappingProxyType(out)

@@ -8,9 +8,10 @@ __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import cached_property
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -35,32 +36,35 @@ def resolve_columns(
     selections: Iterable[ColumnSelection],
     column_dim: str,
     universe: Sequence[str],
-    grouping: xr.DataArray | None = None,
+    groupings: Mapping[str, xr.DataArray] = MappingProxyType({}),
 ) -> tuple[str, ...]:
     """Labels of `colum_dim` selected by `selections` in universe order"""
-    universe = tuple(universe)
-    known = set(universe)
     constraints: list[set[str]] = []
     for sel in selections:
         if sel.labels is None:
             continue
         if sel.column_dim == column_dim:
-            unknown = [label for label in sel.labels if label not in known]
-            if unknown:
-                raise ValueError(f"Unknown {column_dim} labels: {', '.join(unknown)}")
+            _check_known(sel.labels, universe, column_dim)
             constraints.append(set(sel.labels))
-        elif (sel.column_dim, column_dim) in _PROJECTIONS:
-            if grouping is None:
-                raise ValueError(
-                    f"Cannot project {sel.column_dim} selection to "
-                    f"{column_dim} without a grouping"
-                )
-            constraints.append(set(sel.project_to(column_dim, grouping).labels))
-        # else: dim not expressed on this track; ignoring
+            continue
+        grouping = groupings.get(sel.column_dim)
+        if grouping is None:
+            continue
+        groups = grouping[sel.column_dim].values
+        _check_known(sel.labels, groups, sel.column_dim)
+        cols = np.isin(groups, sel.labels)
+        rows = grouping.values[:, cols].any(axis=1)
+        constraints.append(set(grouping[column_dim].values[rows]))
     if not constraints:
-        return universe
-    allowed = set.intersection(*constraints)
-    return tuple(c for c in universe if c in allowed)
+        return tuple(universe)
+    keep = set.intersection(*constraints)
+    return tuple(c for c in universe if c in keep)
+
+
+def _check_known(labels, known, dim):
+    unknown = set(labels) - set(known)
+    if unknown:
+        raise ValueError(f"unknown {dim} labels: {sorted(unknown)}")
 
 
 @dataclass(frozen=True)
@@ -276,9 +280,9 @@ class ResolvedSelection:
 def _legacy_grouping(datastore) -> xr.DataArray | None:
     # SHIM(samples): store-level grouping from track meta; delete on contract
     groupings = [
-        t.grouping
+        t.groupings
         for t in datastore.tracks.values()
-        if t.column_dim == "sample" and t.grouping is not None
+        if t.column_dim == "sample" and len(t.groupings) > 0
     ]
     if not groupings:
         return None

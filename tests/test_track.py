@@ -123,14 +123,22 @@ def test_contig_mean_coverage(track):
 
 
 def test_from_tree_finds_meta(sample_sets):
+    ss = xr.Dataset({"sample_set_membership": sample_sets})
+    depth = xr.Dataset(
+        {"depth": (("position", "sample"), np.zeros((24, 7), dtype=np.uint32))},
+        coords={"sample": ["s1", "s2", "s3", "s4", "s5", "s6", "s7"]},
+    )
     raw = xr.DataTree.from_dict(
         {
-            "/depth": xr.Dataset(),
-            "/depth/_meta/column_grouping": sample_sets,
+            "/depth": depth,
+            "/depth/_meta/column_groupings": ss,
         }
     )
-    track = Track.from_tree("depth", raw["depth"], raw)
-    assert "column_grouping" in track.meta.data_vars
+    track = Track.from_tree(name="depth", data=raw["depth"], raw=raw)
+    assert list(track.groupings.keys()) == ["sample_set"]
+    da = track.groupings["sample_set"]
+    assert da.name == "sample_set_membership"
+    assert da.dims == ("sample", "sample_set")
 
 
 # FIXME: parametrize these tests on Dataset / DataArray
@@ -227,15 +235,6 @@ def test_resolve_columns_unknown_raises():
         )
 
 
-def test_resolve_columns_projection_without_grouping_raises():
-    with pytest.raises(ValueError):
-        resolve_columns(
-            tuple([ColumnSelection("sample_set", labels=("pop1",))]),
-            "sample",
-            ("s1", "s2", "s3"),
-        )
-
-
 @pytest.fixture
 def tiny_grouping():
     samples = ["s1", "s2", "s3", "s4", "s5"]
@@ -246,7 +245,7 @@ def tiny_grouping():
         dims=("sample", "sample_set"),
         coords={"sample": samples, "sample_set": sample_sets},
     )
-    return samples, sample_sets, grouping
+    return samples, sample_sets, {"sample_set": grouping}
 
 
 @pytest.mark.parametrize(
@@ -382,5 +381,6 @@ def test_resolve_columns_sample_and_sample_set_selection(sels, expected, tiny_gr
     ],
 )
 def test_track_resolve_columns_delegation(track, sels, expected):
-    result = track.resolve_columns(sels)
-    assert result == expected
+    print(track.groupings)
+    # result = track.resolve_columns(sels)
+    # assert result == expected

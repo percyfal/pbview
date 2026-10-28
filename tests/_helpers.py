@@ -90,7 +90,7 @@ def attach_sum(tree: xr.DataTree, track_name: str = "depth") -> xr.DataTree:
     """Attach sum track to datatree"""
     values = tree[track_name]["values"]
     dt_coords = tree[track_name].coords
-    sample_sets = tree[f"{track_name}/_meta/column_grouping"]["membership"]
+    sample_sets = tree[f"{track_name}/_meta/column_grouping"]["sample_set_membership"]
 
     data = np.concat(
         [
@@ -131,7 +131,7 @@ def attach_missingness(
     """Attach missingness track to datatree"""
     values = tree[track_name]["values"]
     dt_coords = tree[track_name].coords
-    sample_sets = tree[f"{track_name}/_meta/column_grouping"]["membership"]
+    sample_sets = tree[f"{track_name}/_meta/column_grouping"]["sample_set_membership"]
 
     data = np.concat(
         [
@@ -181,7 +181,7 @@ def attach_default_sample_set(
             "sample_set": ["ALL"],
         },
     )
-    ss = xr.Dataset({"membership": values})
+    ss = xr.Dataset({"sample_set_membership": values})
     tree[f"{track_name}/_meta/column_grouping"] = ss
     tree[track_name].attrs["perbase:grouping_hash"] = grouping_hash(values)
     return tree
