@@ -31,7 +31,7 @@ contract, with a green suite at every commit.
 - One area: `pixi r test -- -W
   "error:Coordinates.sample:pbview._compat.ShimWarning" -q -rf
   --tb=line`
-- Types: `pyright src tests`
+- Types: `basedpyright src tests`
 
 ## Steps
 
@@ -87,6 +87,14 @@ tuple[ColumnSelection, ...]` resolved by the track.
 - [ ] contract: delete mask, property, accessors (`samples_all`,
       `n_samples*`, `sample_set_membership_all`, ...), `_replace`,
       `"active": ...` dict builders, shim tests
+- [ ] grouping: `validate_grouping(s)`, `membership_from_sets`,
+      `write_column_groupings`
+- [ ] layout: /{track}/_meta/groupings (Dataset, one var per group
+      dim)
+- [ ] preprocess + fixtures use the writer; fixtures own groupings,
+      never read back
+- [ ] coordinates: `_legacy_grouping` (SHIM) reads
+      `groupings["sample_set"]`; reject duplicate column dims
 
 ### 4. track-select: TODO
 
@@ -94,32 +102,34 @@ Replace `Track.data(coord)` with `Track.select(resolved:
 ResolvedSelection)`. Callers: `track.select(coords.resolve_for(track,
 genome))`.
 
-- Delete `Track.data`, `_select`, `_select_positions` (and the column
+- [ ] Delete `Track.data`, `_select`, `_select_positions` (and the column
   bridge).
-- Keep `_isel_intervals` (final code; works on Dataset and DataArray).
-- Can be done before finishing samples once `resolve_for` exists.
+- [ ] Keep `_isel_intervals` (final code; works on Dataset and DataArray).
+- [ ] Can be done before finishing samples once `resolve_for` exists.
+- [ ] convert Track to @dataclass(frozen=True); __post_init__ calls
+      validate_grouping
 
 ### 5. precomputed: TODO
 
 Remove `PrecomputedTrack`, `preprocess_data`, `Track._pre`.
 
-- Summaries found via `DataStore.summaries_of(track_name)` using
+- [ ] Summaries found via `DataStore.summaries_of(track_name)` using
   `perbase:source_track`.
-- Old stores: rerun `preprocess`; no name-based fallback.
-- Replace `_coverage_hist_cached`'s use of `matching_sample_set` /
+- [ ] Old stores: rerun `preprocess`; no name-based fallback.
+- [ ] Replace `_coverage_hist_cached`'s use of `matching_sample_set` /
   `_pre.sum`.
 
 ### 6. datastore: TODO (last)
 
 Remove `Coordinates.datastore`.
 
-- `ds.base_coord` → `Coordinates()` (many call sites; mechanical).
-- `genome` / `coords` fixtures become literals.
-- Delete custom `__hash__` / `__eq__` / `_key()`; rely on frozen
+- [ ] `ds.base_coord` → `Coordinates()` (many call sites; mechanical).
+- [ ] `genome` / `coords` fixtures become literals.
+- [ ] Delete custom `__hash__` / `__eq__` / `_key()`; rely on frozen
   dataclass.
-- Delete `pbview/_compat.py` and any `filterwarnings` entry in the
+- [ ] Delete `pbview/_compat.py` and any `filterwarnings` entry in the
   same commit as the last shim.
-- Move durable decisions to docstrings / docs/design.md; delete
+- [ ] Move durable decisions to docstrings / docs/design.md; delete
   REFACTOR.md.
 
 ## Stubbed / known gaps (app)

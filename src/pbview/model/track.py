@@ -9,7 +9,7 @@ __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
@@ -27,6 +27,7 @@ from dask.diagnostics import ProgressBar
 from pbview import config
 from pbview.logging import app_logger as logger
 from pbview.model.coordinates import resolve_columns
+from pbview.model.grouping import GROUPING_NAME, validate_track_groupings
 
 from ._identity import datatree_id
 from .chunking import optimal_chunks_dask
@@ -159,12 +160,11 @@ class Track:
         preprocess_data: xr.DataTree
         | None = None,  # SHIM: remove with PrecomputedTrack
         *,
-        meta: xr.DataTree | None = None,
+        groupings: tuple[xr.DataArray, ...] | None = None,
     ):
         self.name = track_name
         self._data = data
         self._pre = PrecomputedTrack(preprocess_data, track_name=track_name)
-        self.meta = meta
         column_dims = [dim for dim in data.dims if dim not in self.SPATIAL_DIMS]
         if len(column_dims) > 1:
             raise ValueError(
@@ -173,6 +173,12 @@ class Track:
         self._column_dim = data.attrs.get(
             "perbase:column_dim", column_dims[0] if column_dims else "sample"
         )
+        self._groupings = validate_track_groupings(
+            groupings,
+            self.column_dim,
+            self._data[self.column_dim].values,
+            self._data.dims,
+        )
 
     def __repr__(self) -> str:
         return f"<Track(name={self.name})>"
@@ -180,26 +186,26 @@ class Track:
     def __str__(self) -> str:
         return f"Track(name={self.name})"
 
+    @property
+    def group_dims(self) -> tuple[str, ...]:
+        return tuple(self._groupings)
+
     @classmethod
     def from_tree(
         cls, name: str, data: xr.DataTree, raw: xr.DataTree | None = None, **legacy
     ) -> "Track":
         node = raw.children.get(name)
-        meta = node.children.get("_meta") if node is not None else None
-        return cls(name, data, meta=meta, **legacy)
+        gnode = node.children.get("_meta", {}).get(GROUPING_NAME)
+        groupings = tuple(gnode.dataset.data_vars.values()) if gnode is not None else ()
+        return cls(name, data, groupings=groupings, **legacy)
 
-    def grouping(self, source_dim: str) -> xr.DataArray | None:
-        """Membership matrix (column_dim, source_dim)"""
-        if self.meta is None or self.meta.get("column_grouping") is None:
-            return None
-        membership = self.meta["column_grouping"]["membership"]
-        if {self.column_dim, source_dim} <= set(membership.dims):
-            return membership
-        return None
+    @property
+    def groupings(self) -> Mapping[str, xr.DataArray]:
+        return self._groupings
 
     def resolve_columns(self, selections: Iterable[ColumnSelection]) -> tuple[str, ...]:
         return resolve_columns(
-            selections, self.column_dim, self.columns, self.grouping(self.column_dim)
+            selections, self.column_dim, self.columns, self.groupings
         )
 
     @property
