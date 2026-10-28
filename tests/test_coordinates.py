@@ -1,4 +1,5 @@
 import warnings
+from unittest.mock import MagicMock
 
 import _helpers
 import numpy as np
@@ -13,6 +14,7 @@ from pbview.model.coordinates import (
     SpatialSelection,
 )
 from pbview.model.datastore import DataStore
+from pbview.model.track import Track
 
 
 @pytest.fixture
@@ -173,7 +175,7 @@ def test_genome_resolve(genome, kw, expected):
 
 @pytest.mark.parametrize("selected", [None, [], ()])
 def test_empty_column_selection_is_noop(data, selected):
-    sel = ColumnSelection(column_dim="sample", selected=selected)
+    sel = ColumnSelection(column_dim="sample", labels=selected)
     ret = sel.apply(data)
     assert ret == data
 
@@ -182,17 +184,20 @@ def test_empty_column_selection_is_noop(data, selected):
 def test_empty_column_selection_on_subset_is_noop(data, selected):
     data = data.copy()
     data = data.sel(sample=["s1"])
-    ret = ColumnSelection(column_dim="sample", selected=selected).apply(data)
+    ret = ColumnSelection(column_dim="sample", labels=selected).apply(data)
     assert ret == data
 
 
 def test_column_selection_selected(data):
-    sel = ColumnSelection(column_dim="sample", selected=["s1", "s3"])
+    sel = ColumnSelection(column_dim="sample", labels=["s1", "s3"])
     ret = sel.apply(data)
     assert ret.coords["sample"].values.tolist() == ["s1", "s3"]
 
 
-@pytest.mark.skip("FIXME: Coordinates will not know about sample sets going forward")
+@pytest.mark.xfail(
+    strict=True,
+    reason="REFACTOR: Coordinates will not know about sample sets going forward",
+)
 @pytest.mark.parametrize(
     "kw,expected",
     [
@@ -360,7 +365,9 @@ def test_reset_is_default(coords):
     assert coords.with_contigs(("chr1",)).reset().spatial == SpatialSelection()
 
 
-@pytest.mark.skip("# FIXME: add cache hit test")
+@pytest.mark.xfail(
+    strict=False, reason="# REFACTOR: add cache hit test with updated with_sample_sets"
+)
 def test_legacy_coords_cache_hit(legacy_coords):
     coord = legacy_coords
     assert hash(coord) == hash(coord)
@@ -408,3 +415,29 @@ def test_length_range_within_subset(genome):
 def test_length_range_unknown_contig_raises(genome):
     with pytest.raises(KeyError):
         genome.contigs_in_length_range(0, contigs=("chrX",))
+
+
+@pytest.mark.parametrize(
+    "contigs,expected",
+    [
+        (None, ((0, 24),)),
+        ((), ()),
+        (("chr1",), ((0, 10),)),
+        (
+            (
+                "chr1",
+                "chr10",
+            ),
+            (
+                (0, 10),
+                (18, 24),
+            ),
+        ),
+    ],
+)
+def test_coordinates_resolve_for_contigs(contigs, expected, coords, genome):
+    track = MagicMock(spec_set=Track)
+    track.columns = ["s1", "s2", "s3"]
+    track.column_dim = "sample"
+    results = coords.with_contigs(contigs).resolve_for(track, genome)
+    assert results.intervals.intervals == expected

@@ -41,9 +41,9 @@ def make_datatree(tiny_datatree):
             tree = _helpers.attach_default_sample_set(tree)
         if sample_sets is not None:
             tree = _helpers.attach_default_sample_set(tree)
-            default = tree[f"{track_name}/_meta/column_grouping"]["values"]
+            default = tree[f"{track_name}/_meta/column_grouping"]["membership"]
             ss = xr.Dataset(
-                {"values": xr.concat([default, sample_sets], dim="sample_set")}
+                {"membership": xr.concat([default, sample_sets], dim="sample_set")}
             )
             ss.attrs["perbase:grouping_hash"] = _helpers.grouping_hash(sample_sets)
             tree[f"{track_name}/_meta/column_grouping"] = ss
@@ -84,9 +84,9 @@ def make_datastore_path(tmp_path, tiny_datatree):
             tree = _helpers.attach_default_sample_set(tree)
         if sample_sets is not None:
             tree = _helpers.attach_default_sample_set(tree)
-            default = tree[f"{track_name}/_meta/column_grouping"]["values"]
+            default = tree[f"{track_name}/_meta/column_grouping"]["membership"]
             ss = xr.Dataset(
-                {"values": xr.concat([default, sample_sets], dim="sample_set")}
+                {"membership": xr.concat([default, sample_sets], dim="sample_set")}
             )
             ss.attrs["perbase:grouping_hash"] = _helpers.grouping_hash(sample_sets)
             tree[f"{track_name}/_meta/column_grouping"] = ss
