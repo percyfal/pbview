@@ -3,8 +3,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from pbview.model.coordinates import Coordinates, PositionIntervals
-from pbview.model.track import Track, _isel_intervals
+from pbview.model.coordinates import ColumnSelection, Coordinates, PositionIntervals
+from pbview.model.track import Track, _isel_intervals, resolve_columns
 
 N = 24
 
@@ -53,6 +53,11 @@ def coord(full_ds):
     return Coordinates(full_ds)
 
 
+@pytest.fixture()
+def genome(full_ds):
+    return full_ds.genome
+
+
 # FIXME: coord.samples=[] returns empty sample selection, not universe
 def test_default_coord(track, coord):
     assert track.name == "depth"
@@ -82,7 +87,6 @@ def test_lru_cache(track, coord):
     assert track._coverage_hist_cached.cache_info().hits == 2
 
 
-# @pytest.mark.skip("FIXME: use tiny test fixtures, validate with_contigs")
 @pytest.mark.parametrize(
     "contigs,expected",
     [
@@ -97,7 +101,7 @@ def test_coverage_hist(contigs, expected, track, coord):
 
 
 @pytest.mark.parametrize("cutoff,expected", [(0, 3), (2, 3), (10, 3)])
-@pytest.mark.skip("# FIXME: function returns one value?!?")
+@pytest.mark.xfail(strict=False, reason="# REFACTOR: function returns one value?!?")
 def test_missingness_hist(cutoff, expected, track, coord):
     data, _ = track.missingness_hist(coord=coord, missing_cutoff=cutoff)
     assert data[-1] == expected
@@ -160,3 +164,223 @@ def test_empty_intervals(dataset):
     result = _isel_intervals(dataset, PositionIntervals(()))
     assert result.sizes["position"] == 0
     assert "values" in result.data_vars
+
+
+@pytest.mark.parametrize("sels", [(()), (tuple([ColumnSelection("sample")]))])
+def test_resolve_columns_empty_selection(sels):
+    universe = (
+        "s1",
+        "s2",
+        "s3",
+    )
+    result = resolve_columns(
+        selections=sels,
+        column_dim="sample",
+        universe=universe,
+    )
+    assert result == universe
+
+
+@pytest.mark.parametrize(
+    "sels,expected",
+    [
+        (
+            tuple(
+                [
+                    ColumnSelection(
+                        "sample",
+                        labels=(
+                            "s1",
+                            "s3",
+                        ),
+                    )
+                ]
+            ),
+            ("s1", "s3"),
+        ),
+        (tuple([ColumnSelection("sample", labels=())]), ()),
+    ],
+)
+def test_resolve_columns_sample_selection(sels, expected):
+    universe = ("s1", "s2", "s3")
+    result = resolve_columns(selections=sels, column_dim="sample", universe=universe)
+    assert result == expected
+
+
+def test_resolve_columns_unknown_raises():
+    universe = ("s1", "s2", "s3")
+    with pytest.raises(ValueError):
+        resolve_columns(
+            tuple(
+                [
+                    ColumnSelection(
+                        "sample",
+                        labels=(
+                            "s1",
+                            "s4",
+                        ),
+                    )
+                ]
+            ),
+            "sample",
+            universe,
+        )
+
+
+def test_resolve_columns_projection_without_grouping_raises():
+    with pytest.raises(ValueError):
+        resolve_columns(
+            tuple([ColumnSelection("sample_set", labels=("pop1",))]),
+            "sample",
+            ("s1", "s2", "s3"),
+        )
+
+
+@pytest.fixture
+def tiny_grouping():
+    samples = ["s1", "s2", "s3", "s4", "s5"]
+    sample_sets = ["pop1", "pop2"]
+    data = np.array([[True, False]] * 3 + [[False, True]] * 2)
+    grouping = xr.DataArray(
+        data=data,
+        dims=("sample", "sample_set"),
+        coords={"sample": samples, "sample_set": sample_sets},
+    )
+    return samples, sample_sets, grouping
+
+
+@pytest.mark.parametrize(
+    "sels,expected",
+    [
+        (tuple([ColumnSelection("sample_set", labels=("pop1",))]), ("s1", "s2", "s3")),
+        (tuple([ColumnSelection("sample_set", labels=("pop2",))]), ("s4", "s5")),
+    ],
+)
+def test_resolve_columns_sample_set_to_sample_projection(sels, expected, tiny_grouping):
+    samples, _, grouping = tiny_grouping
+    result = resolve_columns(sels, "sample", samples, grouping)
+    assert result == expected
+
+
+def test_resolve_columns_sample_to_sample_set_projection_is_noop(tiny_grouping):
+    _, sample_sets, grouping = tiny_grouping
+    result = resolve_columns(
+        tuple([ColumnSelection("sample", ("s1", "s2", "s3"))]),
+        "sample_set",
+        sample_sets,
+        grouping,
+    )
+    assert list(result) == sample_sets
+
+
+@pytest.mark.parametrize(
+    "sels,expected",
+    [
+        (
+            tuple(
+                [
+                    ColumnSelection(
+                        "sample",
+                        (
+                            "s1",
+                            "s2",
+                        ),
+                    ),
+                    ColumnSelection("sample_set", ("pop1",)),
+                ]
+            ),
+            ("s1", "s2"),
+        ),
+        (
+            tuple(
+                [
+                    ColumnSelection(
+                        "sample",
+                        (
+                            "s1",
+                            "s2",
+                        ),
+                    ),
+                    ColumnSelection("sample_set", ("pop2",)),
+                ]
+            ),
+            (),
+        ),
+        (
+            tuple(
+                [
+                    ColumnSelection(
+                        "sample",
+                        (
+                            "s1",
+                            "s2",
+                            "s4",
+                        ),
+                    ),
+                    ColumnSelection("sample_set", ("pop2",)),
+                ]
+            ),
+            ("s4",),
+        ),
+    ],
+)
+def test_resolve_columns_sample_and_sample_set_selection(sels, expected, tiny_grouping):
+    samples, _, grouping = tiny_grouping
+    result = resolve_columns(sels, "sample", samples, grouping)
+    assert result == expected
+
+
+@pytest.mark.parametrize(
+    "sels,expected",
+    [
+        (
+            tuple(
+                [
+                    ColumnSelection(
+                        "sample",
+                        (
+                            "s1",
+                            "s2",
+                        ),
+                    ),
+                    ColumnSelection("sample_set", ("pop1",)),
+                ]
+            ),
+            ("s1", "s2"),
+        ),
+        (
+            tuple(
+                [
+                    ColumnSelection(
+                        "sample",
+                        (
+                            "s1",
+                            "s2",
+                        ),
+                    ),
+                    ColumnSelection("sample_set", ("pop2",)),
+                ]
+            ),
+            (),
+        ),
+        (
+            tuple(
+                [
+                    ColumnSelection(
+                        "sample",
+                        (
+                            "s1",
+                            "s2",
+                            "s4",
+                        ),
+                    ),
+                    ColumnSelection("sample_set", ("pop2",)),
+                ]
+            ),
+            ("s4",),
+        ),
+    ],
+)
+def test_track_resolve_columns_delegation(track, sels, expected):
+    result = track.resolve_columns(sels)
+    assert result == expected

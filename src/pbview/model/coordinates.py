@@ -20,6 +20,7 @@ import xarray as xr
 
 if TYPE_CHECKING:
     from .datastore import DataStore
+    from .track import Track
 
 from pbview._compat import _warn_shim
 
@@ -57,17 +58,20 @@ class ColumnSelection:
     """A selection over the column axis of a track."""
 
     column_dim: str
-    selected: tuple[str, ...] | None = None
+    labels: tuple[str, ...] | None = None
 
     def __post_init__(self):
-        if self.selected is not None and len(self.selected) == 0:
-            object.__setattr__(self, "selected", None)
+        if self.labels is None:
+            return
+        if isinstance(self.labels, str):
+            raise TypeError("selected labels must be a sequence, not a str")
+        object.__setattr__(self, "labels", tuple(self.labels))
 
     def apply(self, data: xr.Dataset):
         """Apply the selection to the given dataset."""
-        if self.selected is None:
+        if self.labels is None:
             return data
-        return data.sel({self.column_dim: list(self.selected)})
+        return data.sel({self.column_dim: list(self.labels)})
 
     def project_to(
         self, target_dim: str, grouping: xr.DataArray | None
@@ -77,26 +81,26 @@ class ColumnSelection:
         The grouping maps values from the current column dimension to
         the target dimension.
         """
-        if self.selected is None:
-            return ColumnSelection(column_dim=target_dim, selected=None)
+        if self.labels is None:
+            return ColumnSelection(column_dim=target_dim, labels=None)
 
         if target_dim == self.column_dim:
             return self
 
         if grouping is None:
-            return ColumnSelection(column_dim=target_dim, selected=None)
+            return ColumnSelection(column_dim=target_dim, labels=None)
 
         if self.column_dim in grouping.dims and target_dim in grouping.dims:
             # Map selected values to target dimension using grouping
-            selected_indices = grouping.sel({self.column_dim: list(self.selected)}).any(
+            selected_indices = grouping.sel({self.column_dim: list(self.labels)}).any(
                 dim=self.column_dim
             )
             projected_values = grouping.coords[target_dim].values[selected_indices]
             return ColumnSelection(
-                column_dim=target_dim, selected=tuple(projected_values)
+                column_dim=target_dim, labels=tuple(projected_values)
             )
 
-        return ColumnSelection(column_dim=target_dim, selected=None)
+        return ColumnSelection(column_dim=target_dim, labels=None)
 
 
 def _merge_adjacent(
@@ -227,6 +231,13 @@ class PositionIntervals:
 
 
 @dataclass(frozen=True)
+class ResolvedSelection:
+    intervals: PositionIntervals
+    column_dim: str
+    labels: tuple[str, ...]  # explicit; empty means empty
+
+
+@dataclass(frozen=True)
 class Coordinates:
     """Immutable class representation of active sample/contig
     coordinates.
@@ -251,7 +262,7 @@ class Coordinates:
     # hashing, and every with_* carries I/O state,
     datastore: DataStore = field(repr=False, compare=False)  # SHIM: remove
     spatial: SpatialSelection = SpatialSelection()
-    column: dict[str, ColumnSelection] = field(default_factory=dict)
+    column: tuple[ColumnSelection, ...] = ()
     _sample_selected: npt.NDArray[np.bool_] | None = field(
         default=None, repr=False, compare=False
     )
@@ -292,6 +303,20 @@ class Coordinates:
             changes["_sample_selected"] = np.asarray(sample_selected, dtype=bool)
         new = replace(self, **changes)
         return new
+
+    def column_for(self, dim: str) -> ColumnSelection:
+        """Return column selection for dim"""
+        return next(
+            (c for c in self.column if c.column_dim == dim), ColumnSelection(dim)
+        )
+
+    def resolve_for(self, track: Track, genome: Genome) -> ResolvedSelection:
+        """Resolve coordinates with respect to a given track and genome"""
+        return ResolvedSelection(
+            genome.resolve(self.spatial),
+            track.column_dim,
+            track.resolve_columns(self.column),
+        )
 
     def matching_sample_set(self) -> str | None:
         """Return the name of the sample set that matches the current sample
@@ -371,6 +396,10 @@ class Coordinates:
     def selected_contigs(self, genome: Genome) -> tuple[str, ...]:
         """Currently selected contigs"""
         return genome.resolve_contigs(self.spatial)
+
+    def selected_columns(self, track: Track) -> tuple[str, ...]:
+        """Currently selected columns"""
+        return track.resolve
 
     @property
     def samples(self) -> Any:

@@ -9,6 +9,7 @@ __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
 import re
+from collections.abc import Iterable, Sequence
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
@@ -18,6 +19,8 @@ import panel as pn
 
 if TYPE_CHECKING:
     import numpy.typing as npt
+
+    from pbview.model.coordinates import ColumnSelection
 import xarray as xr
 from dask.diagnostics import ProgressBar
 
@@ -28,10 +31,46 @@ from ._identity import datatree_id
 from .chunking import optimal_chunks_dask
 
 if TYPE_CHECKING:
-    from pbview.model.coordinates import Coordinates, PositionIntervals
+    from pbview.model.coordinates import ColumnSelection, Coordinates, PositionIntervals
 
 
 _THRESHOLD_RE = re.compile(r"^(?P<base>.+)_missing_cutoff=(?P<t>\d+)$")
+
+
+# Projection policy: (selection dim, track dim) pairs that project through a grouping.
+_PROJECTIONS = frozenset({("sample_set", "sample")})
+
+
+def resolve_columns(
+    selections: Iterable[ColumnSelection],
+    column_dim: str,
+    universe: Sequence[str],
+    grouping: xr.DataArray | None = None,
+) -> tuple[str, ...]:
+    """Labels of `colum_dim` selected by `selections` in universe order"""
+    universe = tuple(universe)
+    known = set(universe)
+    constraints: list[set[str]] = []
+    for sel in selections:
+        if sel.labels is None:
+            continue
+        if sel.column_dim == column_dim:
+            unknown = [label for label in sel.labels if label not in known]
+            if unknown:
+                raise ValueError(f"Unknown {column_dim} labels: {', '.join(unknown)}")
+            constraints.append(set(sel.labels))
+        elif (sel.column_dim, column_dim) in _PROJECTIONS:
+            if grouping is None:
+                raise ValueError(
+                    f"Cannot project {sel.column_dim} selection to "
+                    f"{column_dim} without a grouping"
+                )
+            constraints.append(set(sel.project_to(column_dim, grouping).labels))
+        # else: dim not expressed on this track; ignoring
+    if not constraints:
+        return universe
+    allowed = set.intersection(*constraints)
+    return tuple(c for c in universe if c in allowed)
 
 
 class PrecomputedTrack:
@@ -186,12 +225,17 @@ class Track:
 
     def grouping(self, source_dim: str) -> xr.DataArray | None:
         """Membership matrix (column_dim, source_dim)"""
-        if self.meta is None or "column_grouping" not in self.meta.data_vars:
+        if self.meta is None or self.meta.get("column_grouping") is None:
             return None
-        membership = self.meta["column_grouping"]
+        membership = self.meta["column_grouping"]["membership"]
         if {self.column_dim, source_dim} <= set(membership.dims):
             return membership
         return None
+
+    def resolve_columns(self, selections: Iterable[ColumnSelection]) -> tuple[str, ...]:
+        return resolve_columns(
+            selections, self.column_dim, self.columns, self.grouping(self.column_dim)
+        )
 
     @property
     def column_dim(self) -> str:
@@ -321,7 +365,6 @@ class Track:
             Histogram, bins as a numpy arrays
         """
         bins = np.arange(0, coord.n_samples + 1)
-        print(bins, coord, missing_cutoff)
         return self._missingness_hist_cached(
             tuple(bins.tolist()), coord, missing_cutoff
         )
