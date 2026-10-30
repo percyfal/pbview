@@ -317,13 +317,12 @@ class TrackCoveragePage(Viewer):
 
     def _compute_hist(self, maxbins, coord, sample_set, by_sample):
         bins = np.arange(maxbins + 1)
-        counts, bins = self.track.coverage_hist(
-            bins=bins, coord=coord.with_sample_sets([sample_set])
+        resolved = coord.with_sample_sets([sample_set]).resolve_for(
+            self.track, self.state.datastore.genome
         )
+        counts, bins = self.track.coverage_hist(bins=bins, resolved=resolved)
         if by_sample:
-            bins = bins / self.track.n_selected(
-                coord.with_sample_sets([sample_set]).column
-            )
+            bins = bins / len(resolved.labels)
         return counts, bins
 
     def _render_plots(self, active):
@@ -384,8 +383,11 @@ class TrackMissingnessPage(Viewer):
         )
 
     def _compute_hist(self, coord, sample_set, missing_cutoff):
+        resolved = coord.with_sample_sets([sample_set]).resolve_for(
+            self.track, self.state.datastore.genome
+        )
         return self.track.missingness_hist(
-            coord=coord.with_sample_sets([sample_set]), missing_cutoff=missing_cutoff
+            resolved=resolved, missing_cutoff=missing_cutoff
         )
 
     def _render_plots(self, active):

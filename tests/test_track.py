@@ -1,6 +1,6 @@
-import _helpers
 import dataclasses
 
+import _helpers
 import numpy as np
 import pytest
 import xarray as xr
@@ -104,16 +104,17 @@ def test_select_rejects_other_column_dim(track):
         track.select(resolved)
 
 
-def test_lru_cache(track, coord):
+def test_lru_cache(track, coord, genome):
+    resolved = coord.resolve_for(track, genome)
     bins = np.arange(0, 11)
-    track.coverage_hist(bins=bins, coord=coord)
+    track.coverage_hist(bins=bins, resolved=resolved)
     assert track._coverage_hist_cached.cache_info().hits == 0
-    track.coverage_hist(bins=bins, coord=coord)
+    track.coverage_hist(bins=bins, resolved=resolved)
     assert track._coverage_hist_cached.cache_info().hits == 1
     bins = np.arange(0, 10)
-    track.coverage_hist(bins=bins, coord=coord)
+    track.coverage_hist(bins=bins, resolved=resolved)
     assert track._coverage_hist_cached.cache_info().hits == 1
-    track.coverage_hist(bins=bins, coord=coord)
+    track.coverage_hist(bins=bins, resolved=resolved)
     assert track._coverage_hist_cached.cache_info().hits == 2
 
 
@@ -124,15 +125,17 @@ def test_lru_cache(track, coord):
         (("chr1",), 1),
     ],
 )
-def test_coverage_hist(contigs, expected, track, coord):
+def test_coverage_hist(contigs, expected, track, coord, genome):
     bins = np.arange(0, 11)
-    data, _ = track.coverage_hist(bins=bins, coord=coord.with_contigs(contigs))
+    resolved = coord.with_contigs(contigs).resolve_for(track, genome)
+    data, _ = track.coverage_hist(bins=bins, resolved=resolved)
     assert data[0] == expected
 
 
 @pytest.mark.parametrize("cutoff,expected", [(0, 3), (2, 3), (10, 3)])
-def test_missingness_hist(cutoff, expected, track, coord):
-    data, _ = track.missingness_hist(coord=coord, missing_cutoff=cutoff)
+def test_missingness_hist(cutoff, expected, track, coord, genome):
+    resolved = coord.resolve_for(track, genome)
+    data, _ = track.missingness_hist(resolved=resolved, missing_cutoff=cutoff)
     assert data[-1] == expected
 
 
@@ -578,3 +581,32 @@ def test_track_validates_groupings_on_construction(d1):
     )
     with pytest.raises(ValueError, match="grouping dims"):
         Track("t", d1, stored=(bad,))
+
+
+def test_resolved_selection_is_a_hashable_value(track, coord, genome):
+    a = coord.with_sample_sets(["pop1"]).resolve_for(track, genome)
+    b = coord.with_sample_sets(["pop1"]).resolve_for(track, genome)
+    assert a == b
+    assert hash(a) == hash(b)
+    assert a != coord.with_sample_sets(["pop2"]).resolve_for(track, genome)
+
+
+def test_coverage_hist_summary_and_raw_paths(track, coord, genome):
+    raw = _helpers.tiny_datatree()["depth"]["values"].values  # (position, sample)
+    bins = np.arange(0, 201)
+
+    def expected(columns):
+        return np.bincount(np.minimum(raw[:, columns].sum(1), 200), minlength=201)
+
+    # pop2 = s4, s5 matches a group, so the precomputed summary is used
+    pop2 = coord.with_sample_sets(["pop2"]).resolve_for(track, genome)
+    assert track._matching_group_of(pop2.labels, "sample_set") == "pop2"
+    np.testing.assert_array_equal(
+        track.coverage_hist(bins=bins, resolved=pop2)[0], expected([3, 4])
+    )
+    # s4, s5, s6 matches no group, so the raw data is summed
+    odd = coord.with_samples(["s4", "s5", "s6"]).resolve_for(track, genome)
+    assert track._matching_group_of(odd.labels, "sample_set") is None
+    np.testing.assert_array_equal(
+        track.coverage_hist(bins=bins, resolved=odd)[0], expected([3, 4, 5])
+    )
