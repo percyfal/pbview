@@ -154,6 +154,9 @@ Remove `Coordinates.datastore`.
 - [ ] Check that `Genome` is hashable for the `lru_cache` function
       `SelectionStateBase._filtered`; if `Genome` holds numpy arrays a
       custom `__hash__` function is needed
+- [x] DataStore takes sample sets from the track groupings. After that
+      sampleset_info goes away on DataStore and on serve, mask,
+      annotation and summarize.
 
 ## Stubbed / known gaps (app)
 
@@ -176,12 +179,10 @@ Remove `Coordinates.datastore`.
   Today only the test helpers compute it.
 - Preprocess must write summaries named by their source dim.
 - A CLI to update or overwrite a user grouping.
-- DataStore takes sample sets from the track groupings. After that
-  sampleset_info goes away on DataStore and on serve, mask, annotation
-  and summarize.
 - Rename the option to --sampleset-info and keep it on preprocess
   only, plus a dedicated command to add or update a track's grouping.
 - Remove the select_set shim (REFACTOR(precomputed)).
+- Overlapping sets raise until the `Coordinates` migration
 
 ## Contract checklist (every step)
 

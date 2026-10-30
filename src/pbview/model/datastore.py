@@ -17,7 +17,6 @@ from typing import Any, override
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import pbzarr
 import xarray as xr
 import zarr
@@ -25,6 +24,7 @@ import zarr
 from pbview import config
 from pbview.logging import app_logger as logger
 from pbview.model.coordinates import Coordinates, Genome
+from pbview.model.grouping import grouping_hash
 from pbview.model.track import Track
 
 xr.set_options(display_expand_attrs=False)
@@ -82,7 +82,7 @@ def _base_track_name(store) -> str:
 
 
 class DataStore:
-    def __init__(self, path: Path | str, sampleset_info: Path | str | None = None):
+    def __init__(self, path: Path):
         self._path = Path(path)
         try:
             self.store = pbzarr.open(self._path)
@@ -102,11 +102,6 @@ class DataStore:
             offsets=self.store[self._active_track].offsets.values,
         )
 
-        self._has_sampleset_info = sampleset_info is not None
-        self._user_sample_set_membership = self._parse_sampleset_info(sampleset_info)
-        if self._has_sampleset_info:
-            self._user_sample_set_membership.setflags(write=False)
-
         pb_track_names = self.store.keys()
         raw = xr.open_datatree(self._path, engine="zarr", chunks={})
         self.tracks = {
@@ -123,23 +118,6 @@ class DataStore:
     def __str__(self) -> str:
         return f"DataStore(path={self._path}, datasets={self.tracks}, id={self.id[:8]})"
 
-    def _parse_sampleset_info(self, sampleset_info) -> npt.NDArray | None:
-        if sampleset_info is None:
-            return None
-        df = pd.read_table(
-            sampleset_info,
-            header=None,
-            sep=r"\s+",
-            index_col=0,
-            names=["sample", "sample_set"],
-        )
-        missing = set(self.samples) - set(df.index)
-        if missing:
-            raise ValueError(
-                f"Samples missing from sampleset_info: {sorted(missing)[:5]}"
-            )
-        return df.loc[self.samples, "sample_set"].to_numpy(dtype=str)
-
     @functools.cached_property
     def id(self) -> str:
         p = Path(self._path).resolve()
@@ -151,20 +129,14 @@ class DataStore:
                 f"v{config.SCHEMA_VERSION}",
                 str(p),
                 str(stat.st_mtime_ns),
-                # FIXME: remove
-                self._sampleset_info_hash(),  # None or hash of sampleset_info content
+                self._grouping_hash(),
             ]
         ).encode()
         return hashlib.blake2b(payload, digest_size=16).hexdigest()
 
-    # FIXME: sampleset information is store per track
-    def _sampleset_info_hash(self) -> str:
-        if not self._has_sampleset_info:
-            return "no-sampleset_info"
-        return hashlib.blake2b(
-            self._user_sample_set_membership.tobytes(),
-            digest_size=8,
-        ).hexdigest()
+    def _grouping_hash(self) -> str:
+        grouping = self._sample_set_grouping
+        return "no-sample-sets" if grouping is None else grouping_hash(grouping)
 
     @property
     def title(self):
@@ -210,9 +182,16 @@ class DataStore:
         return np.asarray(self._genome.offsets)
 
     @functools.cached_property
+    def _sample_set_grouping(self) -> xr.DataArray | None:
+        """Store `sample_set` grouping of the base track, if any.
+
+        SHIM REFACTOR(samples): store-level view of the sample sets;
+        goes away when Coordinates resolves sets through the tracks
+        """
+        return self.tracks[self._active_track].groupings.get("sample_set")
+
+    @functools.cached_property
     def default_sample_set_name(self) -> str:
-        if self.has_sample_sets and len(set(self.sample_set_membership)) == 1:
-            return str(self.sample_set_membership[0])
         return config.DEFAULT_GROUPING_SET
 
     @functools.cached_property
@@ -221,9 +200,18 @@ class DataStore:
 
     @functools.cached_property
     def sample_set_membership(self) -> npt.NDArray:
-        if self._has_sampleset_info:
-            return self._user_sample_set_membership
-        return self.default_sample_set_membership
+        """One set label per sample (legacy single-label view)."""
+        grouping = self._sample_set_grouping
+        if grouping is None:
+            return self.default_sample_set_membership
+        user = grouping.drop_sel(sample_set=self.default_sample_set_name)
+        if user.sizes["sample_set"] == 0:
+            return self.default_sample_set_membership
+        n = user.sum("sample_set").values
+        if (n > 1).any():
+            raise ValueError("Overlapping sample sets are not supported yet")
+        first = user["sample_set"].values[user.values.argmax(axis=1)]
+        return np.where(n == 1, first, self.default_sample_set_name).astype(str)
 
     @functools.cached_property
     def sample_set_names(self) -> list:
@@ -235,12 +223,14 @@ class DataStore:
 
     @functools.cached_property
     def user_sample_set_names(self) -> list[str]:
-        if not self.has_sample_sets:
+        grouping = self._sample_set_grouping
+        if grouping is None:
             return []
-        names = np.unique(self.sample_set_membership).tolist()
-        if len(names) == 1:
-            return []
-        return sorted(names)
+        return [
+            s
+            for s in grouping["sample_set"].values.tolist()
+            if s != self.default_sample_set_name
+        ]
 
     @functools.cached_property
     def n_user_sample_set_names(self) -> int:
@@ -248,7 +238,7 @@ class DataStore:
 
     @property
     def has_sample_sets(self) -> bool:
-        return self._has_sampleset_info
+        return self._sample_set_grouping is not None
 
     @functools.cached_property
     def sample_set_colors(self) -> dict[str, str]:

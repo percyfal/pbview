@@ -65,10 +65,9 @@ def generate_mask(
     output: Path | str | None = None,
     track_name: str = "depth",
     progress: bool = True,
-    sampleset_info: Path | str | None = None,
 ) -> None:
     """Generate accessible sites for the pbzarr store."""
-    ds = DataStore(path=path, sampleset_info=sampleset_info)
+    ds = DataStore(path=path)
     logger.info(
         "Creating accessible sites for track %s based on threshold %s",
         track_name,

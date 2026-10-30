@@ -96,3 +96,26 @@ def test_universe_independent_of_listing_order(make_datastore_path, sample_sets)
         ds = DataStore(path)
         assert ds._active_track == "depth"
         assert ds.samples.tolist() == [f"s{i}" for i in range(1, 8)]
+
+
+def test_sample_sets_from_groupings(full_ds):
+    assert full_ds.has_sample_sets
+    assert full_ds.sample_set_names == ["ALL", "pop1", "pop2", "pop3"]
+    assert full_ds.user_sample_set_names == ["pop1", "pop2", "pop3"]
+    assert full_ds.sample_set_membership.tolist() == (
+        ["pop1"] * 3 + ["pop2"] * 2 + ["pop3"] * 2
+    )
+
+
+def test_no_sample_sets_without_user_grouping(raw_ds):
+    assert not raw_ds.has_sample_sets
+    assert raw_ds.sample_set_names == ["ALL"]
+    assert raw_ds.sample_set_membership.tolist() == ["ALL"] * 7
+
+
+def test_overlapping_sample_sets_unsupported(make_datastore, sample_sets):
+    sample_sets = sample_sets.copy(deep=True)
+    sample_sets[0, 1] = True  # s1 in pop1 and pop2
+    ds = make_datastore(sample_sets=sample_sets)
+    with pytest.raises(ValueError, match="Overlapping"):
+        ds.sample_set_membership

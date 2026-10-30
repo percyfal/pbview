@@ -117,7 +117,6 @@ def preprocess_missingness(
 @log_level()
 @progress_option()
 @chunk_size_option()
-@sampleset_info_option()
 @threshold_option()
 @set_threads
 def preprocess_thresholds(
@@ -125,7 +124,6 @@ def preprocess_thresholds(
     track_name: str,
     progress: bool,
     chunk_size: int,
-    sampleset_info: str | None = None,
     threshold: int = 3,
 ) -> None:
     """Compute thresholds for missingness and sum data"""
@@ -134,7 +132,6 @@ def preprocess_thresholds(
         track_name=track_name,
         progress=progress,
         chunk_size=chunk_size,
-        sampleset_info=sampleset_info,
         missing_cutoff=threshold,
     )
 
