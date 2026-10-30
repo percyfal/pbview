@@ -63,8 +63,7 @@ def preprocess(
     """
     show_progress = ProgressBar() if progress else nullcontext()
 
-    # SHIM REFACTOR(datastore): legacy readers still take sampleset_info
-    ds = DataStore(path=path, sampleset_info=sampleset_info)
+    ds = DataStore(path=path)
     source = ds.tracks[track]
     membership = _source_membership(path, source, sampleset_info)
 
@@ -92,12 +91,11 @@ def compute_thresholds(
     track_name: str = "depth",
     progress: bool = True,
     chunk_size: int = 1_000_000,
-    sampleset_info: Path | str | None = None,
     missing_cutoff: int = 3,
 ) -> None:
     """Compute default thresholds for sum data"""
     show_progress = ProgressBar() if progress else nullcontext()
-    ds = DataStore(path=path, sampleset_info=sampleset_info)
+    ds = DataStore(path=path)
 
     defaults = compute_threshold_defaults(ds, track_name)
 

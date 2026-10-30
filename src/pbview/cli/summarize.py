@@ -11,7 +11,6 @@ from ._common import (
     log_filter_option,
     max_bins_option,
     path_argument,
-    sampleset_info_option,
     threads_option,
     workers_option,
 )
@@ -20,7 +19,6 @@ from ._common import (
 @click.command()
 @path_argument(dir_okay=True, nargs=1)
 @annotation_file_option()
-@sampleset_info_option()
 @threads_option()
 @workers_option()
 @max_bins_option()
@@ -28,7 +26,6 @@ from ._common import (
 @log_level()
 def summarize(
     path: Path,
-    sampleset_info: Path | str | None,
     annotation_file: Path | str | None,
     threads: int,
     workers: int,
@@ -43,7 +40,6 @@ def summarize(
     data = run_summarize(
         path,
         annotation=annotation_file,
-        sampleset_info=sampleset_info,
         max_bins=max_bins,
         threads=threads,
         workers=workers,
@@ -54,7 +50,6 @@ def summarize(
 def run_summarize(
     path: Path,
     *,
-    sampleset_info: Path | str | None = None,
     annotation: Path | str | None = None,
     max_bins: int = 1_000,
     threads: int = 1,
@@ -69,7 +64,6 @@ def run_summarize(
     Args:
         path: The path to the pbzarr store.
         annotation: Path to an annotation file to include in the store.
-        sampleset_info: sampleset_info file mapping samples to populations
         max_bins: Maximum number of bins to use for summarization. Default is 1,000.
         threads: Number of threads to use for summarization. Default is 1.
         workers: Number of workers to use for importing data. Default is 1.

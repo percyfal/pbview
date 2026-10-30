@@ -41,7 +41,8 @@ def d4_argument(nargs: int = 1) -> Callable[[FC], FC]:
 
 def sampleset_info_option() -> Callable[[FC], FC]:
     return click.option(
-        "--sampleset_info",
+        "--sampleset-info",
+        "--sampleset_info",  # SHIM: old spelling, drop when scripts are updated
         type=click.Path(exists=True, dir_okay=False),
         help=(
             "2-column tab-separated sample info file with sample to population mapping"
