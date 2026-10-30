@@ -3,7 +3,11 @@ import hashlib
 import numpy as np
 import xarray as xr
 
-from pbview.model.grouping import membership_from_sets, write_column_groupings
+from pbview.model.grouping import (
+    ensure_all_set,
+    identity_grouping,
+    write_column_groupings,
+)
 
 
 def genome_checksum(contigs, offsets):
@@ -91,24 +95,6 @@ def make_pbzarr_datatree(track_name: str = "depth", **kwargs):
     return dt
 
 
-def all_set(samples, name: str = "ALL") -> xr.DataArray:
-    """Membership of samples (the identity grouping)"""
-    samples = [str(s) for s in samples]
-    return membership_from_sets(
-        samples, {name: samples}, column_dim="sample", group_dim="sample_set"
-    )
-
-
-def with_all_set(
-    sample_sets: xr.DataArray | None, samples, name: str = "ALL"
-) -> xr.DataArray:
-    """Add `ALL` sample set to existing sample sets, first column."""
-    base = all_set(samples, name=name)
-    if sample_sets is None:
-        return base
-    return xr.concat([base, sample_sets], dim="sample_set", join="exact")
-
-
 def _attach_summary(
     tree: xr.DataTree,
     *,
@@ -121,16 +107,16 @@ def _attach_summary(
     """Attach a per-sample-set summary track reduced over `sample`."""
     values = tree[track_name]["values"].values  # (position, sample)
     coords = tree[track_name].coords
-    # Get the group names from the sample_set column
-    groups = membership["sample_set"].values
+    _, group_dim = membership.dims
+    groups = membership[group_dim].values
     data = np.stack(
-        [reduce(values[:, membership.sel(sample_set=g).values]) for g in groups],
+        [reduce(values[:, membership.sel({group_dim: g}).values]) for g in groups],
         axis=1,
     )
     ds = xr.Dataset(
-        data_vars={"values": (("position", "sample_set"), data)},
+        data_vars={"values": (("position", group_dim), data)},
         coords={
-            "sample_set": ("sample_set", groups),
+            group_dim: (group_dim, groups),
             "contigs": ("contig", coords["contigs"].values),
             "offsets": ("contig_boundary", coords["offsets"].values),
         },
@@ -139,7 +125,7 @@ def _attach_summary(
         ds,
         **{
             "perbase:provenance": provenance,
-            "perbase:column_dim": "sample_set",
+            "perbase:column_dim": group_dim,
             "perbase:source_track": track_name,
             "perbase:source_grouping_hash": grouping_hash(membership),
             "perbase:genome_checksum": tree[track_name].attrs[
@@ -182,26 +168,27 @@ def attach_missingness(
 def make_store(
     path,
     *,
-    default_set: bool = False,
     sample_sets: xr.DataArray | None = None,
     with_sum: bool = False,
     with_missing: bool = False,
     track_name: str = "depth",
 ):
-    """Write a tiny pbzarr store. Groupings are built in memory"""
+    """Write a tiny pbzarr store. Groupings are built in memory.
+
+    Only user-supplied groupings are stored; the identity is derived.
+    """
     tree = tiny_datatree(track_name=track_name)
-    membership = None
-    if default_set or sample_sets is not None or with_sum or with_missing:
-        samples = tree[track_name].coords["sample"].values
-        membership = with_all_set(sample_sets, samples)
-        tree[track_name].attrs["perbase:grouping_hash"] = grouping_hash(membership)
+    samples = tree[track_name].coords["sample"].values
+    stored = None if sample_sets is None else ensure_all_set(sample_sets)
+    source = stored if stored is not None else identity_grouping(samples, "sample")
+    tree[track_name].attrs["perbase:grouping_hash"] = grouping_hash(source)
     if with_sum:
-        attach_sum(tree, membership, track_name=track_name)
+        attach_sum(tree, source, track_name=track_name)
     if with_missing:
-        attach_missingness(tree, membership, track_name=track_name)
+        attach_missingness(tree, source, track_name=track_name)
     tree.to_zarr(path)
-    if membership is not None:
-        write_column_groupings(path, track_name, [membership])
+    if stored is not None:
+        write_column_groupings(path, track_name, [stored])
     return path
 
 

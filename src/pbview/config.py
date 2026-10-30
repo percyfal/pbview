@@ -36,8 +36,8 @@ VCARD_STYLE = {
     "background": "WhiteSmoke",
 }
 
-# Sample set settings
-DEFAULT_SAMPLE_SET = "ALL"
+# Grouping set settings
+DEFAULT_GROUPING_SET = "ALL"
 
 # Chunking
 

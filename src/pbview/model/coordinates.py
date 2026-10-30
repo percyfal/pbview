@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from .track import Track
 
 from pbview._compat import _warn_shim
+from pbview.model.grouping import IDENTITY_DIM
 
 xr.set_options(display_expand_attrs=False)
 
@@ -279,16 +280,18 @@ class ResolvedSelection:
 
 def _legacy_grouping(datastore) -> xr.DataArray | None:
     # SHIM(samples): store-level grouping from track meta; delete on contract
-    groupings = [
-        t.groupings
+    stored = [
+        {k: v for k, v in t.groupings.items() if k != IDENTITY_DIM}
         for t in datastore.tracks.values()
-        if t.column_dim == "sample" and len(t.groupings) > 0
+        if t.column_dim == "sample"
     ]
-    if not groupings:
+    stored = [g for g in stored if g]
+    if not stored:
         return None
-    first = groupings[0]
-    if any(not g.equals(first) for g in groupings[1:]):
-        raise ValueError("tracks disagree on sample grouping")
+    first = stored[0]
+    for g in stored[1:]:
+        if g.keys() != first.keys() or any(not g[k].equals(first[k]) for k in g):
+            raise ValueError("tracks disagree on sample grouping")
     return first
 
 

@@ -15,7 +15,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from pbview import config
+
 GROUPING_NAME = "column_groupings"
+IDENTITY_DIM = "identity"
 
 
 def grouping_sets_from_dataframe(
@@ -66,6 +69,38 @@ def membership_from_sets(
     )
 
 
+def identity_grouping(
+    columns: Iterable[str],
+    column_dim: str,
+    name: str = config.DEFAULT_GROUPING_SET,
+) -> xr.DataArray:
+    """Grouping with one set containing every column (derived)"""
+    columns = [str(c) for c in columns]
+    return membership_from_sets(
+        columns, {name: columns}, column_dim=column_dim, group_dim=IDENTITY_DIM
+    )
+
+
+def ensure_all_set(
+    membership: xr.DataArray,
+    name: str = config.DEFAULT_GROUPING_SET,
+) -> xr.DataArray:
+    """Return membership with an all-True `name` set, added first. Idempotent."""
+    column_dim, group_dim = membership.dims
+    if name in membership[group_dim].values.tolist():
+        if not bool(membership.sel({group_dim: name}).all()):
+            raise ValueError(f"set {name!r} is reserved and must contain every column")
+        return membership
+    columns = membership[column_dim].values
+    all_ = xr.DataArray(
+        np.ones((len(columns), 1), dtype=bool),
+        dims=membership.dims,
+        coords={column_dim: columns, group_dim: [name]},
+        name=membership.name,
+    )
+    return xr.concat([all_, membership], dim=group_dim)
+
+
 def write_column_groupings(
     store, track: str, groupings: Iterable[xr.DataArray]
 ) -> None:
@@ -74,8 +109,11 @@ def write_column_groupings(
     for g in groupings:
         if g.ndim != 2:
             raise ValueError(f"Grouping must be 2-d, got {g.dims}")
+        if g.dims[1] == IDENTITY_DIM:
+            raise ValueError(f"group_dim {IDENTITY_DIM!r} is reserved; it is derived")
     if not groupings:
         return
+    groupings = tuple(ensure_all_set(g) for g in groupings)
     ds = xr.merge(
         [g.rename(f"{g.dims[1]}_membership") for g in groupings],
         join="exact",
@@ -96,8 +134,18 @@ def validate_grouping(
             f"grouping dims must be ({track_column_dim!r}, <group_dim>), "
             f"got {grouping.dims}"
         )
-    if grouping.dims[1] in set(track_dims):
+    group_dim = grouping.dims[1]
+    if group_dim in set(track_dims):
         raise ValueError(f"group dim {grouping.dims[1]!r} collides with a track dim")
+    if group_dim == IDENTITY_DIM:
+        raise ValueError(f"group dim {IDENTITY_DIM!r} is reserved; it is derived")
+    all_name = config.DEFAULT_GROUPING_SET
+    if all_name not in grouping[group_dim].values.tolist() or not bool(
+        grouping.sel({group_dim: all_name}).all()
+    ):
+        raise ValueError(
+            f"grouping {group_dim!r} must contain a set {all_name!r} with all True values"
+        )
     if grouping.dtype != bool:
         raise ValueError(f"grouping must be boolean, got {grouping.dtype}")
     if not np.array_equal(grouping[track_column_dim].values, track_column_labels):

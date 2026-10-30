@@ -5,6 +5,7 @@ import _helpers
 import numpy as np
 import pytest
 
+from pbview import config
 from pbview._compat import ShimWarning
 from pbview.model.coordinates import (
     ColumnSelection,
@@ -12,8 +13,10 @@ from pbview.model.coordinates import (
     Genome,
     PositionIntervals,
     SpatialSelection,
+    _legacy_grouping,
 )
 from pbview.model.datastore import DataStore
+from pbview.model.grouping import IDENTITY_DIM, identity_grouping
 from pbview.model.track import Track
 
 
@@ -202,8 +205,15 @@ def test_column_selection_selected(data):
     "kw,expected",
     [
         ({}, 0),
-        ({"with_all": True}, 0),  # FIXME: should be 1
-        ({"with_all": True, "sample_sets": _helpers.sample_sets()}, 3),
+        ({"with_sum": True, "with_missing": True}, 0),  # FIXME: should be 1
+        (
+            {
+                "with_sum": True,
+                "with_missing": True,
+                "sample_sets": _helpers.sample_sets(),
+            },
+            3,
+        ),
     ],
 )
 def test_coordinates_init(make_datastore, kw, expected):
@@ -213,7 +223,7 @@ def test_coordinates_init(make_datastore, kw, expected):
 
 
 def test_coordinates_init_with_column_selection(make_datastore):
-    ds = make_datastore(with_all=True, sample_sets=_helpers.sample_sets())
+    ds = make_datastore(sample_sets=_helpers.sample_sets())
     with pytest.raises(TypeError):
         Coordinates(ds, (), ColumnSelection())
     with pytest.raises(ValueError):
@@ -234,6 +244,34 @@ def test_coordinates_with_samples(coords):
 
 def test_coordinates_with_sample_sets(coords):
     pass
+
+
+def test_default_grouping_is_derived_identity(raw_ds):
+    groupings = raw_ds.tracks["depth"].groupings
+    assert list(groupings) == [IDENTITY_DIM]
+    g = groupings[IDENTITY_DIM]
+    assert g[IDENTITY_DIM].values.tolist() == [config.DEFAULT_GROUPING_SET]
+    assert bool(g.all())
+
+
+def test_legacy_grouping_ignores_identity():
+    from types import SimpleNamespace
+
+    cols = ["s1", "s2"]
+    tracks = {
+        n: SimpleNamespace(
+            column_dim="sample",
+            groupings={IDENTITY_DIM: identity_grouping(cols, "sample")},
+        )
+        for n in ("a", "b")
+    }
+    assert _legacy_grouping(SimpleNamespace(tracks=tracks)) is None
+
+
+def test_user_sets_follow_all(full_ds):
+    g = full_ds.tracks["depth"].groupings["sample_set"]
+    assert g["sample_set"].values.tolist() == ["ALL", "pop1", "pop2", "pop3"]
+    assert bool(g.sel(sample_set="ALL").all())
 
 
 # Compose
@@ -373,9 +411,6 @@ def test_reset_is_default(coords):
     assert coords.with_contigs(("chr1",)).reset().spatial == SpatialSelection()
 
 
-@pytest.mark.xfail(
-    strict=False, reason="# REFACTOR: add cache hit test with updated with_sample_sets"
-)
 def test_legacy_coords_cache_hit(legacy_coords):
     coord = legacy_coords
     assert hash(coord) == hash(coord)

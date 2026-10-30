@@ -26,8 +26,7 @@ contract, with a green suite at every commit.
 ## Commands
 
 - Suite: `pixi r test`
-- All shim callers: `pixi r test -- -W
-  error::pbview._compat.ShimWarning`
+- All shim callers: `pixi r test -- -W error::pbview._compat.ShimWarning`
 - One area: `pixi r test -- -W
   "error:Coordinates.sample:pbview._compat.ShimWarning" -q -rf
   --tb=line`
@@ -65,6 +64,16 @@ Contig mask (`_contig_selected`) replaced by `SpatialSelection` +
 Sample mask (`_sample_selected`) replaced by `column:
 tuple[ColumnSelection, ...]` resolved by the track.
 
+Every track exposes a derived identity grouping `(<column_dim>,
+identity)` with the set `ALL` (`IDENTITY_DIM`,
+`DEFAULT_GROUPING_SET`), never stored. Stored groupings are
+user-supplied only, always contain an all-True `ALL`
+(`ensure_all_set`), and cannot use the dim `identity`. A summary's
+column dim is its source grouping's group (`identity` when there is no
+user grouping), and `perbase:source_grouping_hash` detects staleness.
+A track whose column dim is `identity` (a summary of the identity)
+carries no derived grouping.
+
 - [x] `ColumnSelection` owns its invariants (tuple labels, rejects
       str, `()` allowed)
 - [x] `column` is a hashable tuple; `column_for(dim)`; `_with_column`
@@ -86,10 +95,10 @@ tuple[ColumnSelection, ...]` resolved by the track.
       `matching_sample_set` reads `column`
 - [ ] grouping: `validate_grouping(s)`, `membership_from_sets`,
       `write_column_groupings`
-- [ ] layout: /{track}/_meta/groupings (Dataset, one var per group
-      dim)
-- [ ] preprocess + fixtures use the writer; fixtures own groupings,
-      never read back
+- [x] layout: /{track}/_meta/column_groupings (Dataset, one variable
+      "<group_dim>_membership" per group dim)
+- [ ] preprocess use the writer
+- [x] fixtures use the writer; fixtures own groupings, never read back
 - [ ] coordinates: `_legacy_grouping` (SHIM) reads
       `groupings["sample_set"]`; reject duplicate column dims
 - [ ] contract: delete mask, property, accessors (`samples_all`,
@@ -98,9 +107,9 @@ tuple[ColumnSelection, ...]` resolved by the track.
 
 ### 3b. fixtures: TODO
 
-- [ ] make use of `pbview.grouping.write_column_groupings` to write
+- [x] make use of `pbview.grouping.write_column_groupings` to write
       sample sets
-- [ ] factor out redundant functions from fixtures (e.g., `_make`
+- [x] factor out redundant functions from fixtures (e.g., `_make`
       functions in `conftest.py`
 
 ### 4. track-select: TODO
@@ -156,11 +165,14 @@ Remove `Coordinates.datastore`.
 ## Open questions
 
 - Both `sample` and `sample_set` selected: intersect? (pin with test)
-- Default set `ALL`: ordinary set, never treated as "unfiltered"?
 - Order: finish samples first, or do track-select first to shrink it?
 - Rename `pbview._compat` → `pbview._shims`?
 - `tests/conftest.py` still calls `preprocess.preprocess(p,
   sampleset_info=...)` (old signature).
+  - Move grouping_hash into grouping.py with the preprocess migration.
+    Today only the test helpers compute it.
+  - Preprocess must write summaries named by their source dim.
+  - A CLI to update or overwrite a user grouping.
 
 ## Contract checklist (every step)
 

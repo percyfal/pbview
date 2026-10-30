@@ -30,26 +30,16 @@ def make_datastore_path(tmp_path, tiny_datatree):
     def _make(
         with_sum: bool = False,
         with_missing: bool = False,
-        with_default_sample_set: bool = False,
-        with_all: bool = False,
         sample_sets: xr.DataArray | None = None,
         track_name: str = "depth",
     ):
-        if with_default_sample_set and sample_sets is not None:
-            raise ValueError(
-                "Default sample set is implicit when sample_sets is provided."
-            )
-        if with_all:
-            with_sum = with_missing = with_default_sample_set = True
         state = ["raw"] if (not with_sum and not with_missing) else ["preprocessed"]
         state += ["with_sum"] if with_sum else []
         state += ["with_missing"] if with_missing else []
         state += ["with_sample_sets"] if sample_sets is not None else []
-        state += ["with_default_sample_set"] if with_default_sample_set else []
         path = tmp_path / f"store_{'_'.join(state)}.zarr"
         return _helpers.make_store(
             path,
-            default_set=with_default_sample_set,
             sample_sets=sample_sets,
             with_sum=with_sum,
             with_missing=with_missing,

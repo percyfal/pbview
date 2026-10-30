@@ -203,7 +203,7 @@ class DataStore:
     def default_sample_set_name(self) -> str:
         if self.has_sample_sets and len(set(self.sample_set_membership)) == 1:
             return str(self.sample_set_membership[0])
-        return config.DEFAULT_SAMPLE_SET
+        return config.DEFAULT_GROUPING_SET
 
     @functools.cached_property
     def default_sample_set_membership(self) -> npt.NDArray:

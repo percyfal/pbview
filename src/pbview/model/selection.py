@@ -131,7 +131,7 @@ class SelectionStateBase(param.Parameterized):
                 "Total": self.coord._samples_all,
             }
         )
-        if not np.all(self.coord._sample_set_membership == config.DEFAULT_SAMPLE_SET):
+        if not np.all(self.coord._sample_set_membership == config.DEFAULT_GROUPING_SET):
             df = pd.concat(
                 df,
                 pd.DataFrame(

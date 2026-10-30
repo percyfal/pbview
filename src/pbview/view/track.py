@@ -188,7 +188,7 @@ class _TrackPlotView(TrackView, param.ParameterizedABC):
 
     maxbins = param.Integer(default=1000, bounds=(0, None), doc="Maximum bin size")
     sample_set = param.String(
-        default=config.DEFAULT_SAMPLE_SET, doc="Sample set to plot"
+        default=config.DEFAULT_GROUPING_SET, doc="Sample set to plot"
     )
     by_sample = param.Boolean(default=False)
 

@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 
 import dask.array as da
@@ -7,18 +8,17 @@ import pytest
 import zarr
 
 from pbview.model.datastore import DataStore
+from pbview.model.grouping import IDENTITY_DIM
 from pbview.model.track import Track
 
 INIT_SCENARIOS = {
     "raw": {},
-    "with_default_sample_set": {"with_default_sample_set": True},
     "with_sample_sets": {"sample_sets": True},
     "with_sum": {"with_sum": True},
     "with_sum_and_sample_sets": {"with_sum": True, "sample_sets": True},
     "with_missing": {"with_missing": True},
     "with_missing_and_sample_sets": {"with_missing": True, "sample_sets": True},
     "with_sum_and_missing": {"with_sum": True, "with_missing": True},
-    "with_all": {"with_sum": True, "with_missing": True, "sample_sets": True},
 }
 
 
@@ -77,3 +77,12 @@ def test_datastore_genome_coords(raw_ds):
         18,
         24,
     ]
+
+
+def test_identity_summary_has_no_derived_grouping(make_datastore):
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", message="Duplicate dimension")
+        ds = make_datastore(with_sum=True)
+    track = ds.tracks["depth_sum"]
+    assert track.column_dim == IDENTITY_DIM
+    assert list(track.groupings) == []

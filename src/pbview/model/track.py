@@ -11,6 +11,7 @@ __date__ = "2026-09-17"
 import re
 from collections.abc import Iterable, Mapping
 from functools import lru_cache
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 import dask.array as da
@@ -27,7 +28,12 @@ from dask.diagnostics import ProgressBar
 from pbview import config
 from pbview.logging import app_logger as logger
 from pbview.model.coordinates import resolve_columns
-from pbview.model.grouping import GROUPING_NAME, validate_track_groupings
+from pbview.model.grouping import (
+    GROUPING_NAME,
+    IDENTITY_DIM,
+    identity_grouping,
+    validate_track_groupings,
+)
 
 from ._identity import datatree_id
 from .chunking import optimal_chunks_dask
@@ -173,12 +179,18 @@ class Track:
         self._column_dim = data.attrs.get(
             "perbase:column_dim", column_dims[0] if column_dims else "sample"
         )
-        self._groupings = validate_track_groupings(
+        stored = validate_track_groupings(
             groupings,
             self.column_dim,
             self._data[self.column_dim].values,
             self._data.dims,
         )
+        derived = (
+            {}
+            if self.column_dim == IDENTITY_DIM
+            else {IDENTITY_DIM: identity_grouping(self.columns, self.column_dim)}
+        )
+        self._groupings = MappingProxyType({**derived, **stored})
 
     def __repr__(self) -> str:
         return f"<Track(name={self.name})>"
