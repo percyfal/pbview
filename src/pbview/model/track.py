@@ -260,7 +260,6 @@ class Track:
             sums = self._select_positions(self._pre.sum["values"], coord).sel(
                 sample_set=name
             )
-
         else:
             # Raw path
             arr = self._select(self._hist_view, coord)["values"]

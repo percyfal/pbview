@@ -3,6 +3,8 @@ import hashlib
 import numpy as np
 import xarray as xr
 
+from pbview.model.grouping import membership_from_sets, write_column_groupings
+
 
 def genome_checksum(contigs, offsets):
     """Compute a checksum for a list of contigs and offsets"""
@@ -12,11 +14,14 @@ def genome_checksum(contigs, offsets):
 
 
 def grouping_hash(grouping: xr.DataArray) -> str:
-    """Compute a hash for a grouping DataArray"""
-    payload = (
-        grouping.values.tobytes()
-        + b"|"
-        + b"|".join(s.encode() for s in grouping.coords["sample"].values)
+    """Compute a hash for a (column, group) membership DataArray"""
+    column_dim, group_dim = grouping.dims
+    payload = b"|".join(
+        [
+            grouping.values.tobytes(),
+            *(str(s).encode() for s in grouping[column_dim].values),
+            *(str(s).encode() for s in grouping[group_dim].values),
+        ]
     )
     return "md5:" + hashlib.md5(payload).hexdigest()
 
@@ -86,105 +91,118 @@ def make_pbzarr_datatree(track_name: str = "depth", **kwargs):
     return dt
 
 
-def attach_sum(tree: xr.DataTree, track_name: str = "depth") -> xr.DataTree:
-    """Attach sum track to datatree"""
-    values = tree[track_name]["values"]
-    dt_coords = tree[track_name].coords
-    sample_sets = tree[f"{track_name}/_meta/column_grouping"]["sample_set_membership"]
-
-    data = np.concat(
-        [
-            values[:, sample_sets.sel(sample_set=ss).values].sum(axis=1)
-            for ss in sample_sets.sample_set.values
-        ]
+def all_set(samples, name: str = "ALL") -> xr.DataArray:
+    """Membership of samples (the identity grouping)"""
+    samples = [str(s) for s in samples]
+    return membership_from_sets(
+        samples, {name: samples}, column_dim="sample", group_dim="sample_set"
     )
 
+
+def with_all_set(
+    sample_sets: xr.DataArray | None, samples, name: str = "ALL"
+) -> xr.DataArray:
+    """Add `ALL` sample set to existing sample sets, first column."""
+    base = all_set(samples, name=name)
+    if sample_sets is None:
+        return base
+    return xr.concat([base, sample_sets], dim="sample_set", join="exact")
+
+
+def _attach_summary(
+    tree: xr.DataTree,
+    *,
+    name: str,
+    provenance: str,
+    membership: xr.DataArray,
+    reduce,
+    track_name: str,
+) -> xr.DataTree:
+    """Attach a per-sample-set summary track reduced over `sample`."""
+    values = tree[track_name]["values"].values  # (position, sample)
+    coords = tree[track_name].coords
+    # Get the group names from the sample_set column
+    groups = membership["sample_set"].values
+    data = np.stack(
+        [reduce(values[:, membership.sel(sample_set=g).values]) for g in groups],
+        axis=1,
+    )
     ds = xr.Dataset(
-        data_vars={
-            "values": (
-                ("position", "sample_set"),
-                data.reshape(-1, len(sample_sets.sample_set.values)),
-            )
-        },
+        data_vars={"values": (("position", "sample_set"), data)},
         coords={
-            "sample_set": ("sample_set", sample_sets.sample_set.values),
-            "contigs": ("contig", dt_coords["contigs"].values),
-            "offsets": ("contig_boundary", dt_coords["offsets"].values),
+            "sample_set": ("sample_set", groups),
+            "contigs": ("contig", coords["contigs"].values),
+            "offsets": ("contig_boundary", coords["offsets"].values),
         },
     )
-    track_attrs = {
-        "perbase:provenance": "attach_sum",
-        "perbase:column_dim": "sample_set",
-        "perbase:source_track": track_name,
-        "perbase:source_grouping_hash": tree[track_name].attrs["perbase:grouping_hash"],
-        "perbase:genome_checksum": tree[track_name].attrs["perbase:genome_checksum"],
-    }
-
-    ds = update_dataset_attrs(ds, **track_attrs)
-    tree[f"{track_name}_sum"] = ds
+    tree[name] = update_dataset_attrs(
+        ds,
+        **{
+            "perbase:provenance": provenance,
+            "perbase:column_dim": "sample_set",
+            "perbase:source_track": track_name,
+            "perbase:source_grouping_hash": grouping_hash(membership),
+            "perbase:genome_checksum": tree[track_name].attrs[
+                "perbase:genome_checksum"
+            ],
+        },
+    )
     return tree
+
+
+def attach_sum(
+    tree: xr.DataTree, membership: xr.DataArray, track_name: str = "depth"
+) -> xr.DataTree:
+    return _attach_summary(
+        tree,
+        name=f"{track_name}_sum",
+        provenance="attach_sum",
+        membership=membership,
+        reduce=lambda x: x.sum(axis=1),
+        track_name=track_name,
+    )
 
 
 def attach_missingness(
-    tree: xr.DataTree, missing_cutoff: int = 3, track_name: str = "depth"
+    tree: xr.DataTree,
+    membership: xr.DataArray,
+    missing_cutoff: int = 3,
+    track_name: str = "depth",
 ) -> xr.DataTree:
-    """Attach missingness track to datatree"""
-    values = tree[track_name]["values"]
-    dt_coords = tree[track_name].coords
-    sample_sets = tree[f"{track_name}/_meta/column_grouping"]["sample_set_membership"]
-
-    data = np.concat(
-        [
-            (values[:, sample_sets.sel(sample_set=ss).values] <= missing_cutoff).sum(
-                axis=1
-            )
-            for ss in sample_sets.sample_set.values
-        ]
+    return _attach_summary(
+        tree,
+        name=f"{track_name}_missing_cutoff={missing_cutoff}",
+        provenance="attach_missingness",
+        membership=membership,
+        reduce=lambda x: (x <= missing_cutoff).sum(axis=1),
+        track_name=track_name,
     )
 
-    ds = xr.Dataset(
-        data_vars={
-            "values": (
-                ("position", "sample_set"),
-                data.reshape(-1, len(sample_sets.sample_set.values)),
-            )
-        },
-        coords={
-            "sample_set": ("sample_set", sample_sets.sample_set.values),
-            "contigs": ("contig", dt_coords["contigs"].values),
-            "offsets": ("contig_boundary", dt_coords["offsets"].values),
-        },
-    )
-    track_attrs = {
-        "perbase:provenance": "attach_missingness",
-        "perbase:column_dim": "sample_set",
-        "perbase:source_track": "depth",
-        "perbase:source_grouping_hash": tree["depth"].attrs["perbase:grouping_hash"],
-        "perbase:genome_checksum": tree["depth"].attrs["perbase:genome_checksum"],
-    }
 
-    ds = update_dataset_attrs(ds, **track_attrs)
-    tree[f"depth_missing_cutoff={missing_cutoff}"] = ds
-    return tree
-
-
-def attach_default_sample_set(
-    tree: xr.DataTree, track_name: str = "depth"
-) -> xr.DataTree:
-    """Attach default sample set to datatree metadata column_grouping slot"""
-    samples = tree[track_name].coords["sample"].values
-    values = xr.DataArray(
-        np.array([[True]] * len(samples)),
-        dims=("sample", "sample_set"),
-        coords={
-            "sample": tree[track_name].coords["sample"],
-            "sample_set": ["ALL"],
-        },
-    )
-    ss = xr.Dataset({"sample_set_membership": values})
-    tree[f"{track_name}/_meta/column_grouping"] = ss
-    tree[track_name].attrs["perbase:grouping_hash"] = grouping_hash(values)
-    return tree
+def make_store(
+    path,
+    *,
+    default_set: bool = False,
+    sample_sets: xr.DataArray | None = None,
+    with_sum: bool = False,
+    with_missing: bool = False,
+    track_name: str = "depth",
+):
+    """Write a tiny pbzarr store. Groupings are built in memory"""
+    tree = tiny_datatree(track_name=track_name)
+    membership = None
+    if default_set or sample_sets is not None or with_sum or with_missing:
+        samples = tree[track_name].coords["sample"].values
+        membership = with_all_set(sample_sets, samples)
+        tree[track_name].attrs["perbase:grouping_hash"] = grouping_hash(membership)
+    if with_sum:
+        attach_sum(tree, membership, track_name=track_name)
+    if with_missing:
+        attach_missingness(tree, membership, track_name=track_name)
+    tree.to_zarr(path)
+    if membership is not None:
+        write_column_groupings(path, track_name, [membership])
+    return path
 
 
 def tiny_datatree(track_name: str = "depth", contigs=None) -> xr.DataTree:
@@ -214,7 +232,6 @@ def tiny_datatree(track_name: str = "depth", contigs=None) -> xr.DataTree:
             + [0, 21, 21, 23, 23, 23],
         ]
     )
-
     contigs = (
         np.array(contigs)
         if contigs is not None
