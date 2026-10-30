@@ -25,7 +25,7 @@ from pbview import config
 from pbview.logging import app_logger as logger
 from pbview.model.coordinates import Coordinates, Genome
 from pbview.model.grouping import grouping_hash
-from pbview.model.track import Track
+from pbview.model.track import Summaries, Track, find_summaries
 
 xr.set_options(display_expand_attrs=False)
 
@@ -102,13 +102,20 @@ class DataStore:
             offsets=self.store[self._active_track].offsets.values,
         )
 
-        pb_track_names = self.store.keys()
+        names = sorted(self.store.keys())
         raw = xr.open_datatree(self._path, engine="zarr", chunks={})
+        # Summary tracks are recognised by their attrs, never by name
+        summary_tracks = {
+            n: Track.from_tree(n, self.store[n], raw)
+            for n in names
+            if "perbase:source_track" in raw.children[n].attrs
+        }
+        summaries = find_summaries(summary_tracks.values())
         self.tracks = {
-            name: Track.from_tree(
-                name, self.store[name], raw, preprocess_data=raw
-            )  # SHIM: remove preprocess_data with PrecomputedTrack
-            for name in sorted(pb_track_names)
+            n: summary_tracks[n]
+            if n in summary_tracks
+            else Track.from_tree(n, self.store[n], raw, summaries=summaries.get(n))
+            for n in names
         }
         self.base_coord = Coordinates(self)
 
@@ -246,15 +253,13 @@ class DataStore:
             s: palette[i % len(palette)] for i, s in enumerate(self.sample_set_names)
         }
 
+    def summaries_of(self, track_name: str) -> Summaries:
+        """Summary tracks computed from `track_name` (via `perbase:source_track`)."""
+        return self.tracks[track_name].summaries
+
     @functools.cached_property
     def missing_cutoffs(self) -> list[int]:
-        # FIXME(pbzarr>0.6): PrecomputedTracks will live in DataStore
-        return sorted(self._pre.missing_cutoff.keys())
-
-    @property
-    def _pre(self):
-        # FIXME(pbzarr>0.6): remove this shim; use DataStore attribute
-        return self.tracks[self._active_track]._pre
+        return sorted(self.summaries_of(self._active_track).missingness)
 
     def summary(self) -> None:
         return {

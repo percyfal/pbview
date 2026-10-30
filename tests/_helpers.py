@@ -3,6 +3,7 @@ import hashlib
 import numpy as np
 import xarray as xr
 
+from pbview import config
 from pbview.model.grouping import (
     ensure_all_set,
     grouping_hash,
@@ -91,6 +92,7 @@ def _attach_summary(
     membership: xr.DataArray,
     reduce,
     track_name: str,
+    **attrs,
 ) -> xr.DataTree:
     """Attach a per-sample-set summary track reduced over `sample`."""
     values = tree[track_name]["values"].values  # (position, sample)
@@ -119,18 +121,22 @@ def _attach_summary(
             "perbase:genome_checksum": tree[track_name].attrs[
                 "perbase:genome_checksum"
             ],
+            **attrs,
         },
     )
     return tree
 
 
 def attach_sum(
-    tree: xr.DataTree, membership: xr.DataArray, track_name: str = "depth"
+    tree: xr.DataTree,
+    membership: xr.DataArray,
+    track_name: str = "depth",
+    name: str | None = None,
 ) -> xr.DataTree:
     return _attach_summary(
         tree,
-        name=f"{track_name}_sum",
-        provenance="attach_sum",
+        name=name or f"{track_name}_sum",
+        provenance=config.SUMMARY_SUM,
         membership=membership,
         reduce=lambda x: x.sum(axis=1),
         track_name=track_name,
@@ -142,14 +148,16 @@ def attach_missingness(
     membership: xr.DataArray,
     missing_cutoff: int = 3,
     track_name: str = "depth",
+    name: str | None = None,
 ) -> xr.DataTree:
     return _attach_summary(
         tree,
-        name=f"{track_name}_missing_cutoff={missing_cutoff}",
-        provenance="attach_missingness",
+        name=name or f"{track_name}_missing_cutoff={missing_cutoff}",
+        provenance=config.SUMMARY_MISSINGNESS,
         membership=membership,
         reduce=lambda x: (x <= missing_cutoff).sum(axis=1),
         track_name=track_name,
+        **{"perbase:missing_cutoff": missing_cutoff},
     )
 
 

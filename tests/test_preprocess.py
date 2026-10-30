@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from pbview import config
 from pbview.model.datastore import DataStore
 from pbview.model.grouping import IDENTITY_DIM, grouping_hash
 from pbview.preprocess import preprocess as preprocess_mod
@@ -91,3 +92,21 @@ def test_compute_thresholds_runs(make_datastore_path, sample_sets, capsys):
     out = capsys.readouterr().out
     for name in ("ALL", "pop1", "pop2", "pop3"):
         assert name in out
+
+
+def test_compute_track_missingness_records_cutoff(track, membership):
+    ds = compute_track_missingness(track, membership, missing_cutoff=12)
+    assert ds.attrs["perbase:missing_cutoff"] == 12
+    assert ds.attrs["perbase:provenance"] == config.SUMMARY_MISSINGNESS
+
+
+def test_preprocess_summaries_are_discoverable(make_datastore_path, tmp_path):
+    path = make_datastore_path()
+    info = tmp_path / "sets.tsv"
+    info.write_text(SAMPLESET_INFO)
+    preprocess_mod.preprocess(
+        path, progress=False, sampleset_info=info, missing_cutoff=4
+    )
+    summaries = DataStore(path).summaries_of("depth")
+    assert summaries.sum.name == "depth_sum"
+    assert list(summaries.missingness) == [4]

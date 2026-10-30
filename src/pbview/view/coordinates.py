@@ -36,7 +36,12 @@ def selection_overview(
     """
     label = track.column_dim.replace("_", " ").capitalize() + "s"
     rows = [
-        ("Coordinates", "Contigs", len(coords.selected_contigs(genome)), len(genome.contigs)),
+        (
+            "Coordinates",
+            "Contigs",
+            len(coords.selected_contigs(genome)),
+            len(genome.contigs),
+        ),
         ("Coordinates", label, track.n_selected(coords.column), len(track.columns)),
         *(
             ("Sample sets", name, active, total)

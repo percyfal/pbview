@@ -143,7 +143,7 @@ def test_optimal_chunking(track):
 
 def test_contig_mean_sum_coverage(track):
     np.testing.assert_allclose(
-        track._pre.contig_mean_coverage("ALL"),
+        track.contig_mean_coverage("ALL"),
         [135.6, 118.25, 106.16666667],
         rtol=1e-5,
     )
@@ -530,3 +530,18 @@ def test_group_counts_overlapping(make_datastore, sample_sets):
     assert counts["ALL"] == (3, 7)
     assert counts["pop1"] == (1, 3)
     assert counts["pop2"] == (3, 3)
+
+
+def test_sum_hist(track):
+    assert track.sum_hist("ALL", 7).sum() == 24  # one count per position
+
+
+def test_sum_hist_requires_summary(raw_ds):
+    with pytest.raises(ValueError, match="no sum summary"):
+        raw_ds.tracks["depth"].sum_hist("ALL", 7)
+
+
+def test_column(full_ds):
+    column = full_ds.tracks["depth_sum"].column("pop1")
+    assert column.dims == ("position",)
+    assert column.shape == (24,)

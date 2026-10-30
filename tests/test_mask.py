@@ -4,6 +4,9 @@ import pytest
 import xarray as xr
 
 import pbview.mask.export as _export
+from pbview import config
+from pbview.mask.generate import generate_mask
+from pbview.model.thresholds import SampleSetThresholds, ThresholdProfile
 
 
 @pytest.fixture()
@@ -63,3 +66,23 @@ def test_export_mask_fasta(tiny_dataset, sample_set, expected_lines):
     assert len(bed) == len(expected_lines)
     for line, expected in zip(bed, expected_lines):
         assert line == expected
+
+
+def test_generate_mask(make_datastore_path, sample_sets, tmp_path):
+    path = make_datastore_path(
+        with_sum=True, with_missing=True, sample_sets=sample_sets
+    )
+    sets = ["ALL", "pop1", "pop2", "pop3"]
+    profile = ThresholdProfile(
+        schema_version=config.SCHEMA_VERSION,
+        dataset_id="test",
+        sample_sets={s: SampleSetThresholds(3, 10, 200, 1) for s in sets},
+    )
+    thresholds = tmp_path / "thresholds.yml"
+    profile.write(thresholds)
+    output = tmp_path / "mask.zarr"
+    generate_mask(path, threshold=thresholds, output=output, progress=False)
+    mask = xr.open_zarr(output, consolidated=True)
+    assert mask["sample_set"].values.tolist() == sets
+    assert mask["accessible"].dims == ("position", "sample_set")
+    assert mask.sizes["position"] == 24

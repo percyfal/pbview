@@ -53,6 +53,10 @@ class SelectionStateBase(param.Parameterized):
         self.samples = list(datastore.samples)
         self.param.contigs.objects = list(datastore.contigs)
         self.contigs = list(datastore.contigs)
+        if not datastore.missing_cutoffs:
+            raise ValueError(
+                "No missingness summaries found in the store; run `pbview preprocess`"
+            )
         self.param.missing_cutoff.objects = datastore.missing_cutoffs
         self.missing_cutoff = datastore.missing_cutoffs[0]
         tracks = list(datastore.tracks.keys())

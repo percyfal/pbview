@@ -1,6 +1,7 @@
 import warnings
 from pathlib import Path
 
+import _helpers
 import dask.array as da
 import numpy as np
 import pbzarr
@@ -8,7 +9,7 @@ import pytest
 import zarr
 
 from pbview.model.datastore import DataStore
-from pbview.model.grouping import IDENTITY_DIM
+from pbview.model.grouping import IDENTITY_DIM, ensure_all_set, write_column_groupings
 from pbview.model.track import Track
 
 INIT_SCENARIOS = {
@@ -107,3 +108,42 @@ def test_sample_sets_from_groupings(full_ds):
 def test_no_sample_sets_without_user_grouping(raw_ds):
     assert not raw_ds.has_sample_sets
     assert raw_ds.sample_set_names == ["ALL"]
+
+
+def test_summaries_found_by_attrs(full_ds):
+    s = full_ds.summaries_of("depth")
+    assert s.sum is full_ds.tracks["depth_sum"]
+    assert list(s.missingness) == [3]
+    assert s.missingness[3] is full_ds.tracks["depth_missing_cutoff=3"]
+    assert full_ds.summaries_of("depth_sum").sum is None
+    assert full_ds.missing_cutoffs == [3]
+
+
+def _write_store(path, tree, membership):
+    tree.to_zarr(path)
+    write_column_groupings(path, "depth", [membership])
+    return DataStore(path)
+
+
+def test_summaries_found_without_name_convention(tmp_path, sample_sets):
+    membership = ensure_all_set(sample_sets)
+    tree = _helpers.tiny_datatree()
+    _helpers.attach_sum(tree, membership, name="coverage_totals")
+    _helpers.attach_missingness(tree, membership, missing_cutoff=5, name="gaps")
+    s = _write_store(tmp_path / "s.zarr", tree, membership).summaries_of("depth")
+    assert s.sum.name == "coverage_totals"
+    assert list(s.missingness) == [5]
+
+
+def test_summaries_not_found_by_name_alone(tmp_path, sample_sets):
+    membership = ensure_all_set(sample_sets)
+    tree = _helpers.tiny_datatree()
+    _helpers.attach_sum(tree, membership)
+    _helpers.attach_missingness(tree, membership)
+    for name in ("depth_sum", "depth_missing_cutoff=3"):
+        tree[name].attrs.pop("perbase:source_track")  # as in a store from before
+    ds = _write_store(tmp_path / "old.zarr", tree, membership)
+    s = ds.summaries_of("depth")
+    assert s.sum is None
+    assert not s.missingness
+    assert ds.missing_cutoffs == []
