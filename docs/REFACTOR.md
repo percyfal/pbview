@@ -116,7 +116,7 @@ membership and write the `perbase:*` attrs.
 - [x] factor out redundant functions from fixtures (e.g., `_make`
       functions in `conftest.py`
 
-### 4. track-select: IN PROGRESS
+### 4. track-select: DONE
 
 Replace `Track.data(coord)` with `Track.select(resolved:
 ResolvedSelection)`. Callers: `track.select(coords.resolve_for(track,
@@ -126,8 +126,8 @@ genome))`.
   bridge); `Track.select(resolved)` and `select_data(base, resolved)`
   replace them.
 - [x] Keep `_isel_intervals` (final code; works on Dataset and DataArray).
-- [ ] `selection_overview` rebuilt from `resolve_for`, `Track.n_selected`
-      and `Track.groups` (see known gaps)
+- [x] `selection_overview` rebuilt from the genome, `Track.n_selected`
+      and `Track.group_counts`
 
 ### 5. precomputed: TODO
 
@@ -166,12 +166,6 @@ Remove `Coordinates.datastore`.
 
 ## Stubbed / known gaps (app)
 
-- `selection_overview` stub in the app: sample row and sample-set
-  table missing → track-select (rebuild from `resolve_for`,
-  `Track.n_selected` and `Track.groups`)
-- `SelectionStateBase.summary_df`, `sample_sets_df` and
-  `Coordinates.sample_set_summary` were broken or unused and are
-  deleted → rebuilt together with `selection_overview` in track-select
 - `SelectionStateBase` itself is legacy; when replaced, `_filtered`
   moves with the UI state (its body is already final API) → after
   datastore

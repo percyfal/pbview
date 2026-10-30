@@ -291,6 +291,26 @@ class Track:
                 return name
         return None
 
+    def group_counts(
+        self, dim: str = "sample_set", selections: Iterable[ColumnSelection] = ()
+    ) -> dict[str, tuple[int, int]]:
+        """(selected, total) number of columns for each group of `dim`.
+
+        Falls back to the identity grouping when the track has no
+        grouping for `dim`.
+        """
+        grouping = self._grouping_for(dim)
+        selected = self.resolve_columns(selections)
+        if grouping is None:  # a summary of the identity
+            return {config.DEFAULT_GROUPING_SET: (len(selected), len(self.columns))}
+        group_dim = grouping.dims[1]
+        chosen = np.isin(grouping[self.column_dim].values, selected)
+        member = grouping.values
+        return {
+            name: (int(member[chosen, i].sum()), int(member[:, i].sum()))
+            for i, name in enumerate(grouping[group_dim].values.tolist())
+        }
+
     @property
     def column_dim(self) -> str:
         """Return the name of the column dimension."""
