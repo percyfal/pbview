@@ -4,7 +4,12 @@ import pytest
 import xarray as xr
 
 from pbview import config
-from pbview.model.coordinates import ColumnSelection, Coordinates, PositionIntervals
+from pbview.model.coordinates import (
+    ColumnSelection,
+    Coordinates,
+    PositionIntervals,
+    ResolvedSelection,
+)
 from pbview.model.grouping import IDENTITY_DIM, ensure_all_set
 from pbview.model.track import Track, _isel_intervals, resolve_columns
 
@@ -60,20 +65,41 @@ def genome(full_ds):
     return full_ds.genome
 
 
-def test_default_coord(track, coord):
+def test_default_coord(track, coord, genome):
     assert track.name == "depth"
-    data = track.data(coord.with_samples(None))
+    data = track.select(coord.with_samples(None).resolve_for(track, genome))
     assert data.sizes["position"] == 24
     assert data.sizes["sample"] == 7
     assert data.sizes["contig"] == 3
     assert data.sizes["contig_boundary"] == 4
 
 
-def test_data_with_contigs(track, coord):
-    assert track.data(coord=coord.with_contigs(["chr1"])).sizes["position"] == 10
-    assert track.data(coord=coord.with_contigs(["chr2"])).sizes["position"] == 8
+def test_select_with_contigs(track, coord, genome):
+    def n_positions(c):
+        return track.select(c.resolve_for(track, genome)).sizes["position"]
+
+    assert n_positions(coord.with_contigs(["chr1"])) == 10
+    assert n_positions(coord.with_contigs(["chr2"])) == 8
     with pytest.raises(KeyError):
-        track.data(coord=coord.with_contigs(["chr4"]))
+        coord.with_contigs(["chr4"]).resolve_for(track, genome)
+
+
+def test_select_columns_and_positions(track, coord, genome):
+    c = coord.with_sample_sets(["pop2"]).with_contigs(["chr2"])
+    data = track.select(c.resolve_for(track, genome))
+    assert data["sample"].values.tolist() == ["s4", "s5"]
+    assert data["values"].shape == (8, 2)  # (position, sample)
+
+
+def test_select_empty_columns(track, coord, genome):
+    data = track.select(coord.with_samples(()).resolve_for(track, genome))
+    assert data.sizes["sample"] == 0
+
+
+def test_select_rejects_other_column_dim(track):
+    resolved = ResolvedSelection(PositionIntervals(((0, 24),)), "sample_set", ("ALL",))
+    with pytest.raises(ValueError, match="column dim"):
+        track.select(resolved)
 
 
 def test_lru_cache(track, coord):
