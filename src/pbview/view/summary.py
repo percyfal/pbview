@@ -108,7 +108,7 @@ class SummaryPage(pn.viewable.Viewer):
             if self._suspend:
                 return
             if not new:
-                all_contigs = list(self.state.coord.datastore.genome.contigs)
+                all_contigs = list(self.state.datastore.genome.contigs)
                 if set(all_contigs) == set(self.state.coord.spatial.contigs):
                     return
                 self.state.coords.spatial.contigs = all_contigs
@@ -125,7 +125,7 @@ class SummaryPage(pn.viewable.Viewer):
 
     def _contig_scatter_df(self):
         coord = self.state.coord
-        genome = coord.datastore.genome  # SHIM: coord.datastore.genome
+        genome = self.state.datastore.genome
         names = list(genome.contigs)
         lengths = genome.lengths
         selected = (

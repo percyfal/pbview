@@ -8,6 +8,7 @@ __date__ = "2026-09-17"
 
 import numpy as np
 
+from pbview.model.coordinates import Coordinates
 from pbview.model.datastore import DataStore
 
 
@@ -120,7 +121,7 @@ def compute_threshold_defaults(
     result = {}
     track = datastore.tracks[active_track]
     for s in track.groups("sample_set"):
-        coord = datastore.base_coord.with_sample_sets([s])
+        coord = Coordinates().with_sample_sets([s])
         resolved = coord.resolve_for(track, datastore.genome)
         h = track.sum_hist(s, len(resolved.labels))
         stats = hist_stats(h)

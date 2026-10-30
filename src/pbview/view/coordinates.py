@@ -69,7 +69,7 @@ class CoordinatesView(Viewer):
         )
 
         # FIXME: currently shows total size for all contigs
-        genome = self.state.coord.datastore.genome  # SHIM: remove with datastore
+        genome = self.state.datastore.genome
         self.genome_size_pane = pn.bind(
             lambda *_: pn.Column(
                 pn.indicators.LinearGauge(

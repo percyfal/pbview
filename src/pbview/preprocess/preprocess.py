@@ -7,6 +7,7 @@ import xarray as xr
 from dask.diagnostics import ProgressBar
 
 from pbview.logging import app_logger as logger
+from pbview.model.coordinates import Coordinates
 from pbview.model.datastore import DataStore
 from pbview.model.grouping import (
     IDENTITY_DIM,
@@ -100,7 +101,7 @@ def compute_thresholds(
     defaults = compute_threshold_defaults(ds, track_name)
 
     track = ds.tracks[track_name]
-    coord = ds.base_coord
+    coord = Coordinates()
     # Loop sample sets and for each sum data calculate histogram using
     # the defaults for maxbins
     rows = []
@@ -119,7 +120,7 @@ def compute_thresholds(
             stats = hist_stats(counts, bins)
             mask = (bins >= lo / n) & (bins <= up / n)
             accessible = int(counts[mask].sum())
-            genome = coord.datastore.genome  # SHIM: remove with Coordinates.datastore
+            genome = ds.genome
             rows.append(
                 {
                     "sample_set": ss,

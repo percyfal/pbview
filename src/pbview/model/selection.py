@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import param
 
-from pbview.model.coordinates import ColumnSelection, Coordinates
+from pbview.model.coordinates import ColumnSelection, Coordinates, Genome
 
 if TYPE_CHECKING:
     from pbview.model.track import Track
@@ -43,7 +43,7 @@ class SelectionStateBase(param.Parameterized):
     active_track = param.Selector(default=None, objects=[])
 
     def __init__(self, datastore, active_track="depth", **params):
-        params.setdefault("coord", datastore.base_coord)
+        params.setdefault("coord", Coordinates())
         super().__init__(**params)
 
         self.datastore = datastore
@@ -63,13 +63,11 @@ class SelectionStateBase(param.Parameterized):
         self.param.active_track.objects = tracks
         self.active_track = active_track if active_track in tracks else tracks[0]
 
-    def _genome(self):
-        return self.coord.datastore.genome  # SHIM: remove with Coordinates.datastore
-
     @param.depends("lower", "upper", "samples", "contigs", watch=True)
     def _recompute_coord(self):
         self.coord = self._filtered(
-            self.coord.reset(),
+            Coordinates(),
+            self.datastore.genome,
             self.lower,
             self.upper,
             columns=(ColumnSelection("sample", tuple(map(str, self.samples)) or None),),
@@ -82,12 +80,12 @@ class SelectionStateBase(param.Parameterized):
     @lru_cache(maxsize=32)
     def _filtered(
         coords: Coordinates,
+        genome: Genome,
         lower: int,
         upper: float,
         columns: tuple[ColumnSelection, ...],
         contigs: tuple[str, ...],
     ) -> Coordinates:
-        genome = coords.datastore.genome  # SHIM REFACTOR(datastore): pass genome in
         keep = genome.contigs_in_length_range(lower, upper, contigs=contigs or None)
         for sel in columns:
             coords = coords.with_columns(sel)
@@ -96,6 +94,7 @@ class SelectionStateBase(param.Parameterized):
     def _current(self) -> Coordinates:
         return self._filtered(
             self.coord,
+            self.datastore.genome,
             lower=self.lower,
             upper=self.upper,
             columns=(ColumnSelection("sample", tuple(map(str, self.samples)) or None),),
@@ -106,7 +105,7 @@ class SelectionStateBase(param.Parameterized):
 
     @param.depends("lower", "upper", "contigs")
     def contigs_df(self):
-        regions = self._genome().contig_regions(self._current().spatial)
+        regions = self.datastore.genome.contig_regions(self._current().spatial)
         return pd.DataFrame(
             {
                 "contig": [c for c, _ in regions],
@@ -155,5 +154,5 @@ def make_selection_state_class(
 def build_selection_state(datastore, active_track, defaults):
     """SelectionState factory. Initialize plotting UI with sensible defaults"""
     track = datastore.tracks[active_track]
-    cls = make_selection_state_class(track, datastore.base_coord, defaults)
+    cls = make_selection_state_class(track, Coordinates(), defaults)
     return cls(datastore=datastore, active_track=active_track)
