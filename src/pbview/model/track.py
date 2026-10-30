@@ -39,7 +39,12 @@ from ._identity import datatree_id
 from .chunking import optimal_chunks_dask
 
 if TYPE_CHECKING:
-    from pbview.model.coordinates import ColumnSelection, Coordinates, PositionIntervals
+    from pbview.model.coordinates import (
+        ColumnSelection,
+        Coordinates,
+        PositionIntervals,
+        ResolvedSelection,
+    )
 
 
 _THRESHOLD_RE = re.compile(r"^(?P<base>.+)_missing_cutoff=(?P<t>\d+)$")
@@ -151,6 +156,16 @@ def _isel_intervals(data: xr.Dataset, intervals: PositionIntervals):
     return xr.concat(
         parts, dim="position", data_vars="minimal", coords="minimal", compat="override"
     )
+
+
+def select_data(
+    base: xr.DataTree | xr.Dataset, resolved: ResolvedSelection
+) -> xr.Dataset:
+    """Select the resolved columns and positions of a track's data."""
+    res = base.sel({resolved.column_dim: list(resolved.labels)})
+    if isinstance(res, xr.DataTree):
+        res = res.to_dataset()
+    return _isel_intervals(res, resolved.intervals)
 
 
 class Track:
@@ -301,21 +316,18 @@ class Track:
         """Attributes of the track group."""
         return self._data.attrs
 
-    def _select_positions(self, res, coord: Coordinates) -> xr.DataArray:
-        # SHIM: legacy bridge: remove with Track.data(coord)
-        intervals = coord.datastore.genome.resolve(coord.spatial)
-        if isinstance(res, xr.DataTree):
-            res = res.to_dataset()
-        return _isel_intervals(res, intervals)
+    def select(self, resolved: ResolvedSelection) -> xr.Dataset:
+        """Select the resolved columns and positions (original chunking)."""
+        if resolved.column_dim != self.column_dim:
+            raise ValueError(
+                f"selection resolved for column dim {resolved.column_dim!r}, "
+                f"track {self.name!r} has {self.column_dim!r}"
+            )
+        return select_data(self._data, resolved)
 
-    def _select(self, base: xr.DataArray, coord: Coordinates) -> xr.DataArray:
-        """Apply a column + position selection"""
-        res = base.sel({self.column_dim: list(self.resolve_columns(coord.column))})
-        return self._select_positions(res, coord)
-
-    def data(self, coord: Coordinates) -> xr.DataArray:
-        """Default view (original chunking)."""
-        return self._select(self._data, coord)
+    def _resolve(self, coord: Coordinates) -> ResolvedSelection:
+        # SHIM REFACTOR(datastore): the genome comes from Coordinates.datastore
+        return coord.resolve_for(self, coord.datastore.genome)
 
     def _optimal_chunks(self, reduce_along: str) -> dict:
         """Return optimal chunk sizes for a dask array based on target bytes."""
@@ -331,22 +343,23 @@ class Track:
         """Rechunk data for histogram calculations.
         Ensure chunks are across all samples."""
         logger.debug("Rechunking data for histogram calculations")
-        return self._data.chunk(self._optimal_chunks("sample"))
+        return self._data.chunk(self._optimal_chunks(self.column_dim))
 
     @lru_cache(maxsize=64)
     def _coverage_hist_cached(self, bins: npt.NDArray[int], coord: Coordinates):
         logger.info("Calculating histogram of coverage for '%s' track", self.name)
         logger.debug("Current selection: %s", coord)
         bins = np.asarray(bins)
+        resolved = self._resolve(coord)
         name = self.matching_group(coord.column)
         if name is not None and self._pre.sum is not None:
             sums = select_set(
-                self._select_positions(self._pre.sum["values"], coord), name
+                _isel_intervals(self._pre.sum["values"], resolved.intervals), name
             )
         else:
             # Raw path
-            arr = self._select(self._hist_view, coord)["values"]
-            sums = arr.sum("sample").astype(np.int32)
+            arr = select_data(self._hist_view, resolved)["values"]
+            sums = arr.sum(self.column_dim).astype(np.int32)
         max_bin = int(bins[-1])
         sums_clipped = da.minimum(sums.data, max_bin)
         hist = da.bincount(sums_clipped, minlength=int(bins[-1]) + 1)
@@ -377,6 +390,7 @@ class Track:
         logger.info("Calculating missingness histogram for '%s' track", self.name)
         logger.debug("Current selection: %s", coord)
         bins = np.asarray(bins)
+        resolved = self._resolve(coord)
         name = self.matching_group(coord.column)
 
         if (
@@ -384,15 +398,16 @@ class Track:
             and self._pre.missing_cutoff.get(missing_cutoff) is not None
         ):
             counts = select_set(
-                self._select_positions(
-                    self._pre.missing_cutoff[missing_cutoff]["values"], coord
+                _isel_intervals(
+                    self._pre.missing_cutoff[missing_cutoff]["values"],
+                    resolved.intervals,
                 ),
                 name,
             ).data
         else:
             # Raw path
-            arr = self._select(self._hist_view, coord)["values"]
-            counts = (arr <= missing_cutoff).astype(np.int32).sum("sample").data
+            arr = select_data(self._hist_view, resolved)["values"]
+            counts = (arr <= missing_cutoff).astype(np.int32).sum(self.column_dim).data
         max_bin = int(bins[-1])
         counts_clipped = da.minimum(counts, max_bin)
         with ProgressBar():

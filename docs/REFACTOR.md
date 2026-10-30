@@ -116,18 +116,18 @@ membership and write the `perbase:*` attrs.
 - [x] factor out redundant functions from fixtures (e.g., `_make`
       functions in `conftest.py`
 
-### 4. track-select: TODO
+### 4. track-select: IN PROGRESS
 
 Replace `Track.data(coord)` with `Track.select(resolved:
 ResolvedSelection)`. Callers: `track.select(coords.resolve_for(track,
 genome))`.
 
-- [ ] Delete `Track.data`, `_select`, `_select_positions` (and the column
-  bridge).
-- [ ] Keep `_isel_intervals` (final code; works on Dataset and DataArray).
-- [ ] Can be done before finishing samples once `resolve_for` exists.
-- [ ] convert Track to @dataclass(frozen=True); __post_init__ calls
-      validate_grouping
+- [x] Delete `Track.data`, `_select`, `_select_positions` (and the column
+  bridge); `Track.select(resolved)` and `select_data(base, resolved)`
+  replace them.
+- [x] Keep `_isel_intervals` (final code; works on Dataset and DataArray).
+- [ ] `selection_overview` rebuilt from `resolve_for`, `Track.n_selected`
+      and `Track.groups` (see known gaps)
 
 ### 5. precomputed: TODO
 
@@ -138,11 +138,16 @@ Remove `PrecomputedTrack`, `preprocess_data`, `Track._pre`.
 - [ ] Old stores: rerun `preprocess`; no name-based fallback.
 - [ ] Replace `_coverage_hist_cached`'s use of `matching_sample_set` /
   `_pre.sum`.
+- [ ] convert Track to @dataclass(frozen=True, eq=False);
+      __post_init__ calls validate_grouping (blocked by `_pre`)
 
 ### 6. datastore: TODO (last)
 
 Remove `Coordinates.datastore`.
 
+- [ ] `Track.coverage_hist` / `missingness_hist` take a
+      `ResolvedSelection` instead of a `Coordinates` (they read
+      `coord.datastore.genome` in `Track._resolve`)
 - [ ] `reset()` -> `Coordinates()`
 - [ ] `ds.base_coord` → `Coordinates()` (many call sites; mechanical).
 - [ ] `genome` / `coords` fixtures become literals.
