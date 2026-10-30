@@ -70,53 +70,65 @@ def select_data(
     return _isel_intervals(res, resolved.intervals)
 
 
+@dataclass(frozen=True, eq=False)
+class Summaries:
+    """Summary tracks computed from a base track.
+
+    Found through `perbase:source_track` and `perbase:provenance`,
+    never by name.
+    """
+
+    sum: Track | None = None
+    missingness: Mapping[int, Track] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, eq=False, repr=False)
 class Track:
     """A representation of a pbzarr data track.
 
+    Immutable. Compares and hashes by identity, so instances can key
+    `lru_cache`.
+
     Args:
-        track_name: name of track
+        name: name of track
         data: pbzarr data group
-        groupings: stored user groupings of the track columns
+        stored: stored user groupings of the track columns
         summaries: summary tracks computed from this track
 
     Returns:
         A Track object.
     """
 
+    name: str
+    data: xr.DataTree
+    stored: tuple[xr.DataArray, ...] = field(default=(), kw_only=True)
+    summaries: Summaries = field(default_factory=Summaries, kw_only=True)
+
     TARGET_BYTES = config.TARGET_BYTES
     SPATIAL_DIMS = config.SPATIAL_DIMS
 
-    def __init__(
-        self,
-        track_name: str,
-        data: xr.DataTree,
-        *,
-        groupings: tuple[xr.DataArray, ...] | None = None,
-        summaries: Summaries | None = None,
-    ):
-        self.name = track_name
-        self._data = data
-        self.summaries = summaries if summaries is not None else Summaries()
-        column_dims = [dim for dim in data.dims if dim not in self.SPATIAL_DIMS]
+    def __post_init__(self):
+        column_dims = [dim for dim in self.data.dims if dim not in self.SPATIAL_DIMS]
         if len(column_dims) > 1:
             raise ValueError(
-                f"Multiple column dimensions found in track {track_name}: {column_dims}"
+                f"Multiple column dimensions found in track {self.name}: {column_dims}"
             )
-        self._column_dim = data.attrs.get(
+        column_dim = self.data.attrs.get(
             "perbase:column_dim", column_dims[0] if column_dims else "sample"
         )
+        object.__setattr__(self, "_column_dim", column_dim)
         stored = validate_track_groupings(
-            groupings,
-            self.column_dim,
-            self._data[self.column_dim].values,
-            self._data.dims,
+            self.stored,
+            column_dim,
+            self.data[column_dim].values,
+            self.data.dims,
         )
         derived = (
             {}
-            if self.column_dim == IDENTITY_DIM
-            else {IDENTITY_DIM: identity_grouping(self.columns, self.column_dim)}
+            if column_dim == IDENTITY_DIM
+            else {IDENTITY_DIM: identity_grouping(self.columns, column_dim)}
         )
-        self._groupings = MappingProxyType({**derived, **stored})
+        object.__setattr__(self, "_groupings", MappingProxyType({**derived, **stored}))
 
     def __repr__(self) -> str:
         return f"<Track(name={self.name})>"
@@ -135,7 +147,7 @@ class Track:
         node = raw.children.get(name)
         gnode = node.children.get("_meta", {}).get(GROUPING_NAME)
         groupings = tuple(gnode.dataset.data_vars.values()) if gnode is not None else ()
-        return cls(name, data, groupings=groupings, **kwargs)
+        return cls(name, data, stored=groupings, **kwargs)
 
     @property
     def groupings(self) -> Mapping[str, xr.DataArray]:
@@ -220,22 +232,22 @@ class Track:
     @property
     def columns(self) -> list[str]:
         """Return the list of column names."""
-        return self._data[self.column_dim].values.tolist()
+        return self.data[self.column_dim].values.tolist()
 
     @property
     def values(self) -> xr.DataArray:
         """Track values, dims (position, <column_dim>)."""
-        return self._data["values"]
+        return self.data["values"]
 
     @property
     def coords(self):
         """Coordinates of the track data (contigs, offsets, columns)"""
-        return self._data.coords
+        return self.data.coords
 
     @property
     def attrs(self) -> dict:
         """Attributes of the track group."""
-        return self._data.attrs
+        return self.data.attrs
 
     def column(self, label: str) -> xr.DataArray:
         """Values of one column, dims (position,)."""
@@ -307,7 +319,7 @@ class Track:
                 f"selection resolved for column dim {resolved.column_dim!r}, "
                 f"track {self.name!r} has {self.column_dim!r}"
             )
-        return select_data(self._data, resolved)
+        return select_data(self.data, resolved)
 
     def _resolve(self, coord: Coordinates) -> ResolvedSelection:
         # SHIM REFACTOR(datastore): the genome comes from Coordinates.datastore
@@ -319,7 +331,7 @@ class Track:
             "Calculating optimal chunks for target bytes: %s", self.TARGET_BYTES
         )
         return optimal_chunks_dask(
-            self._data["values"], reduce_along, self.TARGET_BYTES
+            self.data["values"], reduce_along, self.TARGET_BYTES
         )
 
     @property
@@ -327,7 +339,7 @@ class Track:
         """Rechunk data for histogram calculations.
         Ensure chunks are across all samples."""
         logger.debug("Rechunking data for histogram calculations")
-        return self._data.chunk(self._optimal_chunks(self.column_dim))
+        return self.data.chunk(self._optimal_chunks(self.column_dim))
 
     @lru_cache(maxsize=64)
     def _coverage_hist_cached(self, bins: npt.NDArray[int], coord: Coordinates):
@@ -419,18 +431,6 @@ class Track:
     # operation is not. Would need reactive "UPDATE" button.
     def size(self):
         pass
-
-
-@dataclass(frozen=True, eq=False)
-class Summaries:
-    """Summary tracks computed from a base track.
-
-    Found through `perbase:source_track` and `perbase:provenance`,
-    never by name.
-    """
-
-    sum: Track | None = None
-    missingness: Mapping[int, Track] = field(default_factory=dict)
 
 
 def find_summaries(tracks: Iterable[Track]) -> dict[str, Summaries]:

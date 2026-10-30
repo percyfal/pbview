@@ -1,4 +1,6 @@
 import _helpers
+import dataclasses
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -11,7 +13,7 @@ from pbview.model.coordinates import (
     ResolvedSelection,
 )
 from pbview.model.grouping import IDENTITY_DIM, ensure_all_set
-from pbview.model.track import Track, _isel_intervals, resolve_columns
+from pbview.model.track import Summaries, Track, _isel_intervals, resolve_columns
 
 N = 24
 
@@ -47,7 +49,7 @@ def test_track_init(d1):
     assert t.name == "test_track"
     assert t.column_dim == "sample"
     assert np.array_equal(t.columns, ["s1", "s2", "s3"])
-    assert np.array_equal(t._data.position.values, [0, 1, 2])
+    assert np.array_equal(t.data.position.values, [0, 1, 2])
 
 
 @pytest.fixture()
@@ -545,3 +547,34 @@ def test_column(full_ds):
     column = full_ds.tracks["depth_sum"].column("pop1")
     assert column.dims == ("position",)
     assert column.shape == (24,)
+
+
+def test_track_is_frozen(d1):
+    t = Track("test_track", d1)
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        t.name = "other"
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        t.summaries = Summaries()
+
+
+def test_track_hashes_by_identity(d1):
+    a, b = Track("t", d1), Track("t", d1)
+    assert a == a
+    assert hash(a) == hash(a)
+    assert a != b  # eq=False: instances key lru_cache individually
+
+
+def test_track_defaults_to_no_summaries(d1):
+    summaries = Track("t", d1).summaries
+    assert summaries.sum is None
+    assert not summaries.missingness
+
+
+def test_track_validates_groupings_on_construction(d1):
+    bad = xr.DataArray(
+        np.ones((3, 1), dtype=bool),
+        dims=("tissue", "g"),
+        coords={"tissue": ["s1", "s2", "s3"], "g": ["x"]},
+    )
+    with pytest.raises(ValueError, match="grouping dims"):
+        Track("t", d1, stored=(bad,))
