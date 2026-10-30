@@ -129,7 +129,7 @@ genome))`.
 - [x] `selection_overview` rebuilt from the genome, `Track.n_selected`
       and `Track.group_counts`
 
-### 5. precomputed: IN PROGRESS
+### 5. precomputed: DONE
 
 Remove `PrecomputedTrack`, `preprocess_data`, `Track._pre`.
 
@@ -144,7 +144,7 @@ must be preprocessed again.
 - [x] Old stores: rerun `preprocess`; no name-based fallback.
 - [x] Replace `_coverage_hist_cached`'s use of `matching_sample_set` /
   `_pre.sum`.
-- [ ] convert Track to @dataclass(frozen=True, eq=False);
+- [x] convert Track to @dataclass(frozen=True, eq=False);
       __post_init__ calls validate_grouping
 
 ### 6. datastore: TODO (last)

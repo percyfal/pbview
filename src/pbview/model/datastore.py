@@ -114,7 +114,9 @@ class DataStore:
         self.tracks = {
             n: summary_tracks[n]
             if n in summary_tracks
-            else Track.from_tree(n, self.store[n], raw, summaries=summaries.get(n))
+            else Track.from_tree(
+                n, self.store[n], raw, summaries=summaries.get(n, Summaries())
+            )
             for n in names
         }
         self.base_coord = Coordinates(self)
