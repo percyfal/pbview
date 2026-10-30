@@ -71,6 +71,16 @@ class NpEncoder(json.JSONEncoder):
         return obj
 
 
+def _base_track_name(store) -> str:
+    """First track, in sorted order, with a `sample` column dimension.
+
+    SHIM REFACTOR(datastore): the store-level universe goes away with
+    Coordinates.datastore.
+    """
+    names = sorted(store.keys())
+    return next((n for n in names if "sample" in store[n].coords), names[0])
+
+
 class DataStore:
     def __init__(self, path: Path | str, sampleset_info: Path | str | None = None):
         self._path = Path(path)
@@ -83,7 +93,7 @@ class DataStore:
             logger.error("Error opening pbzarr store: %s", e)
             raise
         # FIXME: The coordinates will later on live in the root group
-        self._active_track = list(self.store.keys())[0]
+        self._active_track = _base_track_name(self.store)
         # FIXME: temporary solution to retrieving the coordinates
         self._store_coords = self.store[self._active_track].coords
 

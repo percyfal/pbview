@@ -40,7 +40,7 @@ def defaults():
 @pytest.fixture()
 def state(full_ds, defaults):
     coord = Coordinates(full_ds)
-    full_ds.missing_cutoffs = [3]  # FIXME: Hack to avoid missing_cutoffs
+    # full_ds.missing_cutoffs = [3]  # FIXME: Hack to avoid missing_cutoffs
     cls = make_selection_state_class(coord, defaults=defaults)
     return cls(datastore=full_ds)
 

@@ -86,3 +86,13 @@ def test_identity_summary_has_no_derived_grouping(make_datastore):
     track = ds.tracks["depth_sum"]
     assert track.column_dim == IDENTITY_DIM
     assert list(track.groupings) == []
+
+
+def test_universe_independent_of_listing_order(make_datastore_path, sample_sets):
+    path = make_datastore_path(
+        with_sum=True, with_missing=True, sample_sets=sample_sets
+    )
+    for _ in range(8):  # zarr listing order varies between opens
+        ds = DataStore(path)
+        assert ds._active_track == "depth"
+        assert ds.samples.tolist() == [f"s{i}" for i in range(1, 8)]

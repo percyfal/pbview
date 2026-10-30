@@ -144,7 +144,8 @@ def validate_grouping(
         grouping.sel({group_dim: all_name}).all()
     ):
         raise ValueError(
-            f"grouping {group_dim!r} must contain a set {all_name!r} with all True values"
+            f"grouping {group_dim!r} must contain a set {all_name!r} "
+            "with all True values"
         )
     if grouping.dtype != bool:
         raise ValueError(f"grouping must be boolean, got {grouping.dtype}")
