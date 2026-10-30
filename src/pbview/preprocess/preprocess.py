@@ -3,13 +3,48 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 from dask.diagnostics import ProgressBar
 
 from pbview.logging import app_logger as logger
 from pbview.model.datastore import DataStore
+from pbview.model.grouping import (
+    IDENTITY_DIM,
+    read_sampleset_info,
+    write_column_groupings,
+)
 from pbview.model.histogram import compute_threshold_defaults, hist_stats
+from pbview.model.track import Track
 
 from .track import compute_track_missingness, compute_track_sum
+
+
+def _source_membership(
+    path: Path | str, track: Track, sampleset_info: Path | str | None
+) -> xr.DataArray:
+    """Grouping that the summaries are computed from.
+
+    A supplied sampleset_info table is written to the track (keeping its
+    other groupings); otherwise the track's single stored grouping is used,
+    falling back to the identity.
+    """
+    if sampleset_info is not None:
+        membership = read_sampleset_info(sampleset_info, track.columns)
+        keep = [
+            g
+            for dim, g in track.groupings.items()
+            if dim not in (IDENTITY_DIM, membership.dims[1])
+        ]
+        write_column_groupings(path, track.name, [*keep, membership])
+        return membership
+    stored = [g for dim, g in track.groupings.items() if dim != IDENTITY_DIM]
+    if len(stored) > 1:
+        raise ValueError(
+            f"track {track.name!r} has several groupings "
+            f"{[g.dims[1] for g in stored]}; "
+            "pass --sampleset-info to choose one"
+        )
+    return stored[0] if stored else track.groupings[IDENTITY_DIM]
 
 
 def preprocess(
@@ -28,19 +63,20 @@ def preprocess(
     """
     show_progress = ProgressBar() if progress else nullcontext()
 
+    # SHIM REFACTOR(datastore): legacy readers still take sampleset_info
     ds = DataStore(path=path, sampleset_info=sampleset_info)
+    source = ds.tracks[track]
+    membership = _source_membership(path, source, sampleset_info)
 
     if preprocess_sum:
-        ds_sum = compute_track_sum(track=ds.tracks[track], base_coord=ds.base_coord)
+        ds_sum = compute_track_sum(source, membership)
         logger.info("Writing track sum to pbzarr store at %s", path)
         with show_progress:
             ds_sum.to_zarr(path, group=f"{track}_sum", mode="w")
 
     if preprocess_missingness:
         ds_miss = compute_track_missingness(
-            track=ds.tracks[track],
-            base_coord=ds.base_coord,
-            missing_cutoff=missing_cutoff,
+            source, membership, missing_cutoff=missing_cutoff
         )
         logger.info("Writing track missingness to pbzarr store at %s", path)
         with show_progress:

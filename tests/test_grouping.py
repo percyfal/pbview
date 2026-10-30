@@ -6,9 +6,11 @@ from pbview import config
 from pbview.model.grouping import (
     IDENTITY_DIM,
     ensure_all_set,
+    grouping_hash,
     grouping_sets_from_dataframe,
     identity_grouping,
     membership_from_sets,
+    read_sampleset_info,
     write_column_groupings,
 )
 
@@ -103,3 +105,19 @@ def test_write_rejects_identity_dim(tmp_path):
     g = identity_grouping(["a", "b"], "sample")
     with pytest.raises(ValueError):
         write_column_groupings(tmp_path / "s.zarr", "depth", [g])
+
+
+def test_read_sampleset_info(tmp_path):
+    f = tmp_path / "info.tsv"
+    f.write_text("s2\tpopB\ns1\tpopA\ns9\tpopA\n")  # s9 is not a column
+    m = read_sampleset_info(f, ["s1", "s2", "s3"])
+    assert m["sample_set"].values.tolist() == ["ALL", "popA", "popB"]
+    assert m.sel(sample_set="popA").values.tolist() == [True, False, False]
+    assert m.sel(sample_set="popB").values.tolist() == [False, True, False]
+    assert bool(m.sel(sample_set="ALL").all())
+
+
+def test_grouping_hash():
+    a = identity_grouping(["s1", "s2"], "sample")
+    assert grouping_hash(a) == grouping_hash(identity_grouping(["s1", "s2"], "sample"))
+    assert grouping_hash(a) != grouping_hash(identity_grouping(["s1", "s3"], "sample"))

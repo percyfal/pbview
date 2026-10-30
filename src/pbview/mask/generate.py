@@ -8,6 +8,7 @@ from pbview.config import SCHEMA_VERSION
 from pbview.logging import cli_logger as logger
 from pbview.model.datastore import DataStore
 from pbview.model.thresholds import ThresholdProfile
+from pbview.model.track import select_set
 
 
 def _build_mask_dataset(results, base_coords, thresholds):
@@ -84,14 +85,14 @@ def generate_mask(
     results = {}
     for ss, thresholds in threshold_data.sample_sets.items():
         # Calculate excluded_coverage mask
-        sums = track._pre.sum["values"].sel(sample_set=ss)
+        sums = select_set(track._pre.sum["values"], ss)
         excluded_coverage = (sums < thresholds.lower_coverage) | (
             sums > thresholds.upper_coverage
         )
 
         # Calculate excluded_missing mask
         key = thresholds.missing_cutoff
-        miss = track._pre.missing_cutoff[key]["values"].sel(sample_set=ss)
+        miss = select_set(track._pre.missing_cutoff[key]["values"], ss)
         excluded_missing = miss > thresholds.max_missing_samples
 
         # Combine exclusion masks and invert for accessible sites
