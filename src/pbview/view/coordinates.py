@@ -20,16 +20,34 @@ from pbview import config
 from pbview.model.selection import SelectionStateBase
 
 if TYPE_CHECKING:
-    from pbview.model.coordinates import Coordinates
-    from pbview.model.datastore import DataStore
+    from pbview.model.coordinates import Coordinates, Genome
+    from pbview.model.track import Track
 
 
 pn.extension("tabulator")
 
 
-def selection_overview(coords: Coordinates, ds: DataStore) -> pd.DataFrame:  # noqa
-    # REFACTOR: reimplement from genome + resolve_for (see REFACTOR.md)
-    return pd.DataFrame(columns=["Active", "Total", "Type"])
+def selection_overview(
+    coords: Coordinates, genome: Genome, track: Track
+) -> pd.DataFrame:
+    """Active and total number of contigs, columns and sample sets.
+
+    The frame has a (Type, Label) index, as consumed by the sidebar table.
+    """
+    label = track.column_dim.replace("_", " ").capitalize() + "s"
+    rows = [
+        ("Coordinates", "Contigs", len(coords.selected_contigs(genome)), len(genome.contigs)),
+        ("Coordinates", label, track.n_selected(coords.column), len(track.columns)),
+        *(
+            ("Sample sets", name, active, total)
+            for name, (active, total) in track.group_counts(
+                "sample_set", coords.column
+            ).items()
+        ),
+    ]
+    return pd.DataFrame(rows, columns=["Type", "Label", "Active", "Total"]).set_index(
+        ["Type", "Label"]
+    )
 
 
 class CoordinatesView(Viewer):
@@ -79,14 +97,12 @@ class CoordinatesView(Viewer):
 
         self.summary_pane = pn.bind(
             lambda *_: pn.widgets.Tabulator(
-                selection_overview(state.coord, state.coord.datastore),
+                selection_overview(state.coord, state.datastore.genome, state.track()),
                 groupby=["Type"],
                 hidden_columns=["Type"],
             ),
-            state.param.lower,
-            state.param.upper,
-            state.param.samples,
-            state.param.contigs,
+            state.param.coord,
+            state.param.active_track,
         )
 
     def _hist(self, *_):

@@ -499,3 +499,34 @@ def test_resolve_columns_projection_pair_needs_grouping():
         resolve_columns(sel, "sample", ["s1", "s2"], {})
     other = (ColumnSelection("tissue", ("x",)),)  # not a projection pair
     assert resolve_columns(other, "sample", ["s1"], {}) == ("s1",)
+
+
+def test_group_counts(track, coord):
+    assert track.group_counts() == {
+        "ALL": (7, 7),
+        "pop1": (3, 3),
+        "pop2": (2, 2),
+        "pop3": (2, 2),
+    }
+    sel = coord.with_sample_sets(["pop1"]).column
+    assert track.group_counts("sample_set", sel) == {
+        "ALL": (3, 7),
+        "pop1": (3, 3),
+        "pop2": (0, 2),
+        "pop3": (0, 2),
+    }
+
+
+def test_group_counts_without_sets(raw_ds):
+    assert raw_ds.tracks["depth"].group_counts() == {"ALL": (7, 7)}
+
+
+def test_group_counts_overlapping(make_datastore, sample_sets):
+    ss = sample_sets.copy(deep=True)
+    ss[0, 1] = True  # s1 in pop1 and pop2
+    track = make_datastore(sample_sets=ss).tracks["depth"]
+    sel = (ColumnSelection("sample_set", ("pop2",)),)  # selects s1, s4, s5
+    counts = track.group_counts("sample_set", sel)
+    assert counts["ALL"] == (3, 7)
+    assert counts["pop1"] == (1, 3)
+    assert counts["pop2"] == (3, 3)

@@ -1,5 +1,7 @@
 import pytest
 
+from pbview.model.coordinates import Coordinates
+from pbview.view.coordinates import selection_overview
 from pbview.view.datastore import DataStoreView
 
 SETS = ["ALL", "pop1", "pop2", "pop3"]
@@ -36,3 +38,19 @@ def test_summary_page(dsv):
     df = dsv.pages["Summary"]._contig_scatter_df()
     assert sorted(df["sample_set"].unique()) == sorted(SETS)
     assert len(df) == 3 * len(SETS)
+
+
+def test_selection_overview(full_ds):
+    coords = Coordinates(full_ds).with_contigs(["chr1"]).with_sample_sets(["pop1"])
+    df = selection_overview(coords, full_ds.genome, full_ds.tracks["depth"])
+    assert df.index.names == ["Type", "Label"]
+    assert list(df.columns) == ["Active", "Total"]
+    assert df.loc[("Coordinates", "Contigs")].tolist() == [1, 3]
+    assert df.loc[("Coordinates", "Samples")].tolist() == [3, 7]
+    assert df.loc["Sample sets"].index.tolist() == SETS
+    assert df.loc[("Sample sets", "pop2")].tolist() == [0, 2]
+
+
+def test_selection_overview_pane(dsv):
+    table = dsv.cv.summary_pane()
+    assert len(table.value) == 2 + len(SETS)
