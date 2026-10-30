@@ -92,10 +92,11 @@ membership and write the `perbase:*` attrs.
       `_sync_sample_mask`)
 - [x] parity test (`# SHIM`); fix `sample_selected` warning text →
       `resolve_for(track, genome)`
-- [ ] migrate: `_filtered` / `SelectionStateBase`, `_key()` uses
-      `column`, `Track._select` column half (bridge + `_sel_columns`),
-      `compute_track_sum` via `(coverage * membership).sum("sample")`,
-      `matching_sample_set` reads `column`
+- [x] migrate: `_key()` uses column, `matching_sample_set` reads
+      column
+- [ ] migrate: `_filtered` / `SelectionStateBase`, `Track._select`
+      column half (bridge + `_sel_columns`), `compute_track_sum` via
+      `(coverage * membership).sum("sample")`
 - [x] grouping: `validate_grouping(s)`, `membership_from_sets`,
       `write_column_groupings`
 - [x] layout: /{track}/_meta/column_groupings (Dataset, one variable

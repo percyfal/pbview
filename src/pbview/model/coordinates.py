@@ -321,9 +321,6 @@ class Coordinates:
     datastore: DataStore = field(repr=False, compare=False)  # SHIM: remove
     spatial: SpatialSelection = SpatialSelection()
     column: tuple[ColumnSelection, ...] = ()
-    _sample_selected: npt.NDArray[np.bool_] | None = field(
-        default=None, repr=False, compare=False
-    )
 
     def __post_init__(self):
         object.__setattr__(self, "column", tuple(self.column))
@@ -331,22 +328,27 @@ class Coordinates:
         if len(dims) != len(set(dims)):
             raise ValueError(f"duplicate column dims: {dims}")
 
-        # SHIM: legacy mask derived from column (single source of
-        # truth); delete on contract
-        if self._sample_selected is None:
-            samples = self.datastore.samples  # store-level universe, legacy order
-            labels = resolve_columns(
-                self.column, "sample", samples, _legacy_grouping(self.datastore)
-            )
-            object.__setattr__(
-                self, "_sample_selected", np.isin(np.asarray(samples), labels)
-            )
+    @cached_property
+    def _sample_selected(self) -> npt.NDArray[np.bool_]:
+        """Legacy sample mask.
+
+        SHIM REFACTOR(samples): store-level universe; delete on
+        contract.
+        """
+        groupings = _legacy_grouping(self.datastore) or {}
+        known = (*groupings, IDENTITY_DIM, "sample")
+        for sel in self.column:
+            if sel.labels is not None and sel.column_dim not in known:
+                raise ValueError(f"no {sel.column_dim!r} grouping in the store")
+        samples = np.asarray(self.datastore.samples)
+        labels = resolve_columns(self.column, "sample", samples, groupings)
+        return np.isin(samples, labels)
 
     def _key(self) -> tuple:
         return (
             self.datastore.id,  # SHIM: remove with datastore
             self.spatial,  # final
-            self._sample_selected.tobytes(),  # SHIM: remove with samples
+            self.column,  # final
         )
 
     def __hash__(self) -> int:
@@ -356,18 +358,6 @@ class Coordinates:
         if not isinstance(other, Coordinates):
             return NotImplemented
         return self._key() == other._key()
-
-    def _replace(
-        self,
-        *,
-        sample_selected: npt.NDArray[np.bool_] | None = None,
-    ) -> "Coordinates":
-        """Return a new instance sharing raw data, with new selection arrays."""
-        changes = {}
-        if sample_selected is not None:
-            changes["_sample_selected"] = np.asarray(sample_selected, dtype=bool)
-        new = replace(self, **changes)
-        return new
 
     def column_for(self, dim: str) -> ColumnSelection:
         """Return column selection for dim"""
@@ -384,16 +374,19 @@ class Coordinates:
         )
 
     def matching_sample_set(self) -> str | None:
-        """Return the name of the sample set that matches the current sample
-        selection mask."""
+        """Name of the sample set whose members equal the current selection."""
+        selected = set(self.samples.tolist())
         for name in self.sample_set_names:
-            if name == "ALL":
-                members = self.samples_all
-            else:
-                members = self.samples_all[self.sample_set_membership_all == name]
-            if np.array_equal(np.sort(members), np.sort(self.samples)):
+            if set(self._set_members(name).tolist()) == selected:
                 return name
         return None
+
+    def _set_members(self, name: str) -> npt.NDArray:
+        # SHIM REFACTOR(samples): store-level view of the sample sets
+        grouping = self.datastore._sample_set_grouping
+        if grouping is None:
+            return self.samples_all  # Only the default sample set exists
+        return self.samples_all[grouping.sel(sample_set=name).values]
 
     # Factory methods
     def with_contigs(
@@ -413,32 +406,34 @@ class Coordinates:
         """Replace the selection for selection.column_dim"""
         others = tuple(s for s in self.column if s.column_dim != selection.column_dim)
         keep = others if selection.labels is None else others + (selection,)
-        return replace(
-            self, column=keep, _sample_selected=None
-        )  # SHIM REFACTOR(samples): drop _sample_selected
+        return replace(self, column=keep)
 
     def with_samples(
         self,
         samples: Iterable[str] | None = None,
     ) -> "Coordinates":
-        """Keep only listed samples. `None` resets the sample selected mask."""
-        if samples is None:
-            return self._replace(sample_selected=np.ones_like(self._sample_selected))
-        keep = (
-            np.isin(self.samples_all, np.asarray(list(samples))) & self._sample_selected
-        )
-        return self._replace(sample_selected=keep)
+        """Keep only the listed samples, replacing any earlier sample selection.
 
-    def with_sample_sets(self, sample_sets: list[str]):
-        """Keep only listed sample sets. `None` resets the sample selected mask."""
-        if self.default_sample_set_name in sample_sets:
-            return self
-        if sample_sets is None:
-            return self._replace(sample_selected=np.ones_like(self._sample_selected))
-        keep = (
-            np.isin(self.sample_set_membership_all, sample_sets) & self._sample_selected
-        )
-        return self._replace(sample_selected=keep)
+        `None` resets the `sample` selection. Unknown labels are rejected when
+        the selection is resolved.
+        """
+        labels = None if samples is None else tuple(samples)
+        return self.with_columns(ColumnSelection("sample", labels))
+
+    def with_sample_sets(
+        self, sample_sets: Iterable[str] | None = None
+    ) -> "Coordinates":
+        """Keep samples in any of the listed sets, replacing any
+        earlier set selection.
+
+        `None`, or a list containing the default set, resets the
+        `sample_set` selection. Unknown labels are rejected when the
+        selection is resolved.
+        """
+        labels = None if sample_sets is None else tuple(sample_sets)
+        if labels is not None and self.default_sample_set_name in labels:
+            labels = None
+        return self.with_columns(ColumnSelection("sample_set", labels))
 
     def reset(self) -> "Coordinates":
         """Return Coordinates with no selections (all contigs, all columns)."""
@@ -521,12 +516,16 @@ class Coordinates:
 
     @property
     def user_sample_set_names(self) -> list[str]:
-        """Return user sample set names for the current selection"""
-        if not self.has_sample_sets:
+        """Return user sample set names with selected member"""
+        grouping = self.datastore._sample_set_grouping
+        if grouping is None:
             return []
-        selected_members = self.sample_set_membership_all[self._sample_selected]
-        present = np.unique(selected_members).tolist()
-        return [s for s in present if s != self.default_sample_set_name]
+        present = grouping.values[self._sample_selected].any(axis=0)
+        return [
+            s
+            for s, p in zip(grouping["sample_set"].values.tolist(), present)
+            if p and s != self.default_sample_set_name
+        ]
 
     @property
     def user_sample_set_names_all(self) -> list[str]:
@@ -550,29 +549,17 @@ class Coordinates:
         return self.datastore.has_sample_sets
 
     def sample_set_membership_dataframe(self, *, active_only=False) -> pd.DataFrame:
-        df = pd.DataFrame(
-            {
-                "sample_set": self.default_sample_set_membership_all,
-                "active": self._sample_selected,
-                "sample": self.samples_all,
-            }
-        )
-        if self.has_sample_sets:
-            df = pd.concat(
-                [
-                    df,
-                    pd.DataFrame(
-                        {
-                            "sample_set": self.sample_set_membership_all,
-                            "active": self._sample_selected,
-                            "sample": self.samples_all,
-                        }
-                    ),
-                ]
+        """Long-form (sample_set, sample, active) table, one row per membership"""
+        grouping = self.datastore._sample_set_grouping  # SHIM REFACTOR(samples)
+        if grouping is None:
+            df = pd.DataFrame(
+                {"sample_set": self.default_sample_set_name, "sample": self.samples_all}
             )
-        if active_only:
-            df = df[df.active]
-        return df
+        else:
+            member = grouping.rename("member").to_series()
+            df = member[member].reset_index()[["sample_set", "sample"]]
+        df = df.assign(active=df["sample"].isin(self.samples))
+        return df[df.active] if active_only else df
 
     def sample_set_summary(self) -> pd.DataFrame:
         return (

@@ -30,7 +30,7 @@ def _summarize(
     column_dim, group_dim = membership.dims
     values, member = xr.align(values, membership.astype(np.int32), join="exact")
     data = (
-        xr.dot(values, member, dims=column_dim)
+        xr.dot(values, member, dim=column_dim)
         .astype(np.int32)
         .transpose("position", group_dim)
     )
