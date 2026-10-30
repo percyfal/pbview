@@ -1,4 +1,3 @@
-import warnings
 from unittest.mock import MagicMock
 
 import _helpers
@@ -6,17 +5,14 @@ import numpy as np
 import pytest
 
 from pbview import config
-from pbview._compat import ShimWarning
 from pbview.model.coordinates import (
     ColumnSelection,
     Coordinates,
     Genome,
     PositionIntervals,
     SpatialSelection,
-    _legacy_grouping,
 )
-from pbview.model.datastore import DataStore
-from pbview.model.grouping import IDENTITY_DIM, identity_grouping
+from pbview.model.grouping import IDENTITY_DIM
 from pbview.model.track import Track
 
 
@@ -197,31 +193,6 @@ def test_column_selection_selected(data):
     assert ret.coords["sample"].values.tolist() == ["s1", "s3"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REFACTOR: Coordinates will not know about sample sets going forward",
-)
-@pytest.mark.parametrize(
-    "kw,expected",
-    [
-        ({}, 0),
-        ({"with_sum": True, "with_missing": True}, 0),  # FIXME: should be 1
-        (
-            {
-                "with_sum": True,
-                "with_missing": True,
-                "sample_sets": _helpers.sample_sets(),
-            },
-            3,
-        ),
-    ],
-)
-def test_coordinates_init(make_datastore, kw, expected):
-    ds = make_datastore(**kw)
-    coords = Coordinates(ds)
-    assert coords.n_sample_sets == expected
-
-
 def test_coordinates_init_with_column_selection(make_datastore):
     ds = make_datastore(sample_sets=_helpers.sample_sets())
     with pytest.raises(TypeError):
@@ -238,34 +209,12 @@ def test_coordinates_with_contigs(coords, genome):
     )
 
 
-def test_coordinates_with_samples(coords):
-    pass
-
-
-def test_coordinates_with_sample_sets(coords):
-    pass
-
-
 def test_default_grouping_is_derived_identity(raw_ds):
     groupings = raw_ds.tracks["depth"].groupings
     assert list(groupings) == [IDENTITY_DIM]
     g = groupings[IDENTITY_DIM]
     assert g[IDENTITY_DIM].values.tolist() == [config.DEFAULT_GROUPING_SET]
     assert bool(g.all())
-
-
-def test_legacy_grouping_ignores_identity():
-    from types import SimpleNamespace
-
-    cols = ["s1", "s2"]
-    tracks = {
-        n: SimpleNamespace(
-            column_dim="sample",
-            groupings={IDENTITY_DIM: identity_grouping(cols, "sample")},
-        )
-        for n in ("a", "b")
-    }
-    assert _legacy_grouping(SimpleNamespace(tracks=tracks)) is None
 
 
 def test_user_sets_follow_all(full_ds):
@@ -320,39 +269,19 @@ def test_spatial_rejects_str():
         SpatialSelection("chr1")
 
 
-@pytest.fixture(params=["has_sample_sets", "no_sample_sets"])
-def legacy_coords(make_datastore_path, request):
-    if request.param == "has_sample_sets":
-        path = make_datastore_path(sample_sets=_helpers.sample_sets())
-    elif request.param == "no_sample_sets":
-        path = make_datastore_path()
-    return Coordinates(DataStore(path))
+def test_with_samples_selection(coords):
+    assert coords.with_samples(["s1", "s2"]).column == (
+        ColumnSelection("sample", ("s1", "s2")),
+    )
+    assert coords.with_samples(["s1"]).with_samples().column == ()
 
 
-def test_with_contigs_does_not_warn(legacy_coords):
-    legacy_coords = legacy_coords
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", ShimWarning)
-        legacy_coords.with_contigs(["chr1"])
-
-
-def test_with_samples_does_not_warn(legacy_coords):
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", ShimWarning)
-        legacy_coords.with_samples(["s1"]).with_sample_sets(["pop1"])
-
-
-def test_with_samples(legacy_coords):
-    coord = legacy_coords
-    assert coord.with_samples(["s1", "s2"]).n_samples == 2
-    assert coord.with_samples().n_samples == 7
-    assert coord.with_samples(()).n_samples == 0
-
-
-def test_with_samples_rejects_unknown_on_resolve(legacy_coords):
-    coord = legacy_coords.with_samples(["s1", "s8"])  # construction does not validate
-    with pytest.raises(ValueError, match="unknown sample labels"):
-        coord.n_samples
+def test_with_sample_sets_default_resets(coords):
+    sel = coords.with_sample_sets(["pop1"])
+    assert sel.column == (ColumnSelection("sample_set", ("pop1",)),)
+    assert sel.with_sample_sets(["ALL"]) == coords
+    assert sel.with_sample_sets(["pop1", "ALL"]) == coords
+    assert sel.with_sample_sets(None) == coords
 
 
 def test_reset_clears_contigs(coords, genome):
@@ -370,13 +299,12 @@ def test_reset_is_default(coords):
     assert coords.with_contigs(("chr1",)).reset().spatial == SpatialSelection()
 
 
-def test_legacy_coords_cache_hit(legacy_coords):
-    coord = legacy_coords
-    assert hash(coord) == hash(coord)
-    assert hash(coord.with_sample_sets(["pop1"])) == hash(
-        coord.with_sample_sets(["pop1"])
+def test_hash_follows_column_selection(coords):
+    assert hash(coords) == hash(coords)
+    assert hash(coords.with_sample_sets(["pop1"])) == hash(
+        coords.with_sample_sets(["pop1"])
     )
-    assert hash(coord) != hash(coord.with_sample_sets(["pop1"]))
+    assert hash(coords) != hash(coords.with_sample_sets(["pop1"]))
 
 
 @pytest.mark.parametrize(
@@ -450,71 +378,19 @@ def test_with_columns_none_clears(coords):
     assert c.with_columns(ColumnSelection("sample", None)) == coords.reset()
 
 
-@pytest.fixture
-def set_coords(full_ds):
-    return Coordinates(full_ds)
+def test_with_samples_replaces_earlier_selection(coords):
+    coord = coords.with_samples(["s1", "s2"]).with_samples(["s2", "s3"])
+    assert coord.column == (ColumnSelection("sample", ("s2", "s3")),)
 
 
-@pytest.mark.parametrize(
-    "sets,expected",
-    [(["pop1"], 3), (["pop1", "pop3"], 5), (["ALL"], 7), (None, 7)],
-)
-def test_with_sample_sets_counts(set_coords, sets, expected):
-    assert set_coords.with_sample_sets(sets).n_samples == expected
+def test_sample_selections_are_part_of_the_key(coords):
+    a = coords.with_sample_sets(["pop1"])
+    assert a == coords.with_sample_sets(["pop1"])
+    assert a != coords.with_samples(["s1", "s2", "s3"])  # different selection
 
 
-def test_with_sample_sets_unknown_rejected_on_resolve(set_coords):
-    coord = set_coords.with_sample_sets(["pop0"])
-    with pytest.raises(ValueError, match="unknown sample_set labels"):
-        coord.n_samples
-
-
-def test_with_sample_sets_without_sets(coords):
-    assert coords.with_sample_sets(["ALL"]).n_samples == 7
-    with pytest.raises(ValueError, match="no 'sample_set' grouping"):
-        coords.with_sample_sets(["pop1"]).n_samples
-
-
-def test_samples_and_sample_sets_intersect(set_coords):
-    both = set_coords.with_samples(["s1", "s2"])
-    assert both.with_sample_sets(["pop2"]).n_samples == 0
-    assert both.with_sample_sets(["pop1"]).n_samples == 2
-
-
-def test_with_samples_replaces_earlier_selection(set_coords):
-    coord = set_coords.with_samples(["s1", "s2"]).with_samples(["s2", "s3"])
-    assert coord.samples.tolist() == ["s2", "s3"]
-
-
-def test_sample_selections_are_part_of_the_key(set_coords):
-    a = set_coords.with_sample_sets(["pop1"])
-    assert a == set_coords.with_sample_sets(["pop1"])
-    # same samples, different selection
-    assert a != set_coords.with_samples(["s1", "s2", "s3"])
-
-
-def test_matching_sample_set(set_coords):
-    assert set_coords.matching_sample_set() == "ALL"
-    assert set_coords.with_sample_sets(["pop2"]).matching_sample_set() == "pop2"
-    assert set_coords.with_samples(["s4", "s5"]).matching_sample_set() == "pop2"
-    assert set_coords.with_samples(["s1"]).matching_sample_set() is None
-
-
-def test_user_sample_set_names_follow_selection(set_coords):
-    assert set_coords.user_sample_set_names == ["pop1", "pop2", "pop3"]
-    assert set_coords.with_sample_sets(["pop2"]).user_sample_set_names == ["pop2"]
-
-
-def test_sample_set_summary(set_coords):
-    s = set_coords.with_sample_sets(["pop1"]).sample_set_summary()
-    assert s.loc["ALL"].tolist() == [3, 7]
-    assert s.loc["pop1"].tolist() == [3, 3]
-    assert s.loc["pop2"].tolist() == [0, 2]
-
-
-def test_overlapping_sample_sets(make_datastore, sample_sets):
-    ss = sample_sets.copy(deep=True)
-    ss[0, 1] = True  # s1 in pop1 and pop2
-    coord = Coordinates(make_datastore(sample_sets=ss))
-    assert coord.with_sample_sets(["pop1"]).samples.tolist() == ["s1", "s2", "s3"]
-    assert coord.with_sample_sets(["pop2"]).samples.tolist() == ["s1", "s4", "s5"]
+def test_selected_columns(full_ds):
+    coords = Coordinates(full_ds)
+    track = full_ds.tracks["depth"]
+    assert coords.selected_columns(track) == tuple(track.columns)
+    assert coords.with_sample_sets(["pop2"]).selected_columns(track) == ("s4", "s5")

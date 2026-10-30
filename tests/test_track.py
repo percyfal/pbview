@@ -442,3 +442,34 @@ def test_overlapping_sets_on_track(make_datastore, sample_sets):
     sel = (ColumnSelection("sample_set", ("pop2",)),)
     assert track.resolve_columns(sel) == ("s1", "s4", "s5")
     assert track.groups("sample_set", sel) == ("ALL", "pop1", "pop2")
+
+
+def test_n_selected_unknown_samples_raise(track, coord):
+    with pytest.raises(ValueError, match="unknown sample labels"):
+        track.n_selected(coord.with_samples(["s1", "s8"]).column)
+
+
+def test_n_selected_empty_selection(track, coord):
+    assert track.n_selected(coord.with_samples(()).column) == 0
+
+
+def test_missing_grouping_raises_for_projection(raw_ds):
+    track = raw_ds.tracks["depth"]
+    coord = Coordinates(raw_ds)
+    assert track.n_selected(coord.with_sample_sets(["ALL"]).column) == 7
+    with pytest.raises(ValueError, match="no 'sample_set' grouping"):
+        track.n_selected(coord.with_sample_sets(["pop1"]).column)
+
+
+def test_selection_not_applicable_to_track_is_skipped(full_ds):
+    summary = full_ds.tracks["depth_sum"]  # column dim sample_set
+    sel = (ColumnSelection("sample", ("s1",)),)
+    assert summary.resolve_columns(sel) == tuple(summary.columns)
+
+
+def test_resolve_columns_projection_pair_needs_grouping():
+    sel = (ColumnSelection("sample_set", ("pop1",)),)
+    with pytest.raises(ValueError, match="no 'sample_set' grouping"):
+        resolve_columns(sel, "sample", ["s1", "s2"], {})
+    other = (ColumnSelection("tissue", ("x",)),)  # not a projection pair
+    assert resolve_columns(other, "sample", ["s1"], {}) == ("s1",)
