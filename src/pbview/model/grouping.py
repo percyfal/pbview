@@ -8,6 +8,7 @@ __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-10-28"
 
+import hashlib
 from collections.abc import Iterable, Mapping
 from types import MappingProxyType
 
@@ -19,6 +20,42 @@ from pbview import config
 
 GROUPING_NAME = "column_groupings"
 IDENTITY_DIM = "identity"
+
+
+def grouping_hash(grouping: xr.DataArray) -> str:
+    """Compute a hash for a (column, group) membership DataArray"""
+    column_dim, group_dim = grouping.dims
+    payload = b"|".join(
+        [
+            grouping.values.tobytes(),
+            *(str(s).encode() for s in grouping[column_dim].values),
+            *(str(s).encode() for s in grouping[group_dim].values),
+        ]
+    )
+    return "md5:" + hashlib.md5(payload).hexdigest()
+
+
+def read_sampleset_info(
+    path,
+    columns: Iterable[str],
+    *,
+    column_dim: str = "sample",
+    group_dim: str = "sample_set",
+) -> xr.DataArray:
+    """Read a two-column (sample, sample_set) table as a membership with `ALL` first.
+
+    Rows for labels not in `columns` are ignored; a column listed in no
+    set belongs only to `ALL`. A column may be in several sets.
+    """
+    columns = [str(c) for c in columns]
+    df = pd.read_table(
+        path, header=None, sep=r"\s+", names=[column_dim, group_dim], dtype=str
+    )
+    df = df[df[column_dim].isin(columns)]
+    sets = grouping_sets_from_dataframe(df, column_dim=column_dim, group_dim=group_dim)
+    return ensure_all_set(
+        membership_from_sets(columns, sets, column_dim=column_dim, group_dim=group_dim)
+    )
 
 
 def grouping_sets_from_dataframe(

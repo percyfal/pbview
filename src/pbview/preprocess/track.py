@@ -12,84 +12,69 @@ import numpy as np
 import xarray as xr
 
 from pbview.logging import app_logger as logger
-from pbview.model.coordinates import Coordinates
+from pbview.model.grouping import grouping_hash
 from pbview.model.track import Track
 
+_INHERITED_ATTRS = (
+    "zarr_conventions",
+    "perbase:version",
+    "perbase:coordinates",
+    "perbase:genome_checksum",
+)
 
-def compute_track_sum(track: Track, base_coord: Coordinates) -> xr.Dataset:
-    """
-    Compute the sum across sample sets for a given track.
+
+def _summarize(
+    track: Track, membership: xr.DataArray, values: xr.DataArray, provenance: str
+) -> xr.Dataset:
+    """Sum `values` over the columns of each group in `membership`."""
+    column_dim, group_dim = membership.dims
+    values, member = xr.align(values, membership.astype(np.int32), join="exact")
+    data = (
+        xr.dot(values, member, dims=column_dim)
+        .astype(np.int32)
+        .transpose("position", group_dim)
+    )
+    attrs = {k: v for k, v in track.attrs.items() if k in _INHERITED_ATTRS}
+    return xr.Dataset(
+        data_vars={"values": data.chunk({group_dim: -1, "position": 1_000_000})},
+        coords={
+            group_dim: membership[group_dim].values,
+            "contigs": ("contig", track.coords["contigs"].values),
+            "offsets": ("contig_boundary", track.coords["offsets"].values),
+        },
+        attrs={
+            **attrs,
+            "perbase:provenance": provenance,
+            "perbase:column_dim": group_dim,
+            "perbase:source_track": track.name,
+            "perbase:source_grouping_hash": grouping_hash(membership),
+        },
+    )
+
+
+def compute_track_sum(track: Track, membership: xr.DataArray) -> xr.Dataset:
+    """Sum a track over the groups of a (column, group) membership.
 
     Args:
         track: The input track data.
-        base_coord: Base coordinate selection.
+        membership: Boolean membership of the track columns in groups.
     Returns:
-        Dataset containing the computed sums for each sample set.
+        Dataset with `values` of dims (position, group dim), one column per group.
     """
-    genome = base_coord.datastore.genome  # SHIM: remove with Coordinates.datastore
-    logger.info(f"Computing sums for {base_coord.n_sample_sets} sample sets")
-    data = xr.concat(
-        [
-            track.data(base_coord.with_sample_sets([name]))["values"]
-            .sum("sample")
-            .astype(np.int32)
-            for name in base_coord.sample_set_names
-        ],
-        dim=xr.DataArray(
-            base_coord.sample_set_names, dims="sample_set", name="sample_set"
-        ),
+    logger.info("Computing sums for %d groups", membership.shape[1])
+    return _summarize(
+        track, membership, track.values.astype(np.int32), "preprocess_sum"
     )
-    data = data.transpose("position", "sample_set")
-    # Coordinates are for full dataset
-    ds_out = xr.Dataset(
-        data_vars={"values": data.chunk({"sample_set": -1, "position": 1_000_000})},
-        coords={
-            "offsets": np.array(genome.offsets),
-            "contigs": np.array(genome.contigs),
-            "sample_set": base_coord.sample_set_names,
-        },
-    )
-    return ds_out
 
 
 def compute_track_missingness(
-    track: Track, base_coord: Coordinates, missing_cutoff: int = 3
-):
-    """
-    Compute track missingness across sample sets.
-
-    Args:
-        track: The input track data.
-        base_coord: Base coordinate selection.
-        missing_cutoff: A site with <= missing_cutoff coverage is
-            assigned missing status.
-    Returns:
-        Dataset containing the computed sums for each sample set.
-    """
-    genome = base_coord.datastore.genome  # SHIM: remove with Coordinates.datastore
-    logger.info(f"Computing missingness for {base_coord.n_sample_sets} sample sets")
-    data = xr.concat(
-        [
-            (
-                track.data(base_coord.with_sample_sets([name]))["values"]
-                <= missing_cutoff
-            )
-            .astype(np.int32)
-            .sum("sample")
-            for name in base_coord.sample_set_names
-        ],
-        dim=xr.DataArray(
-            base_coord.sample_set_names, dims="sample_set", name="sample_set"
-        ),
+    track: Track, membership: xr.DataArray, missing_cutoff: int = 3
+) -> xr.Dataset:
+    """Count missing columns (value <= missing_cutoff) per group and position."""
+    logger.info("Computing missingness for %d groups", membership.shape[1])
+    return _summarize(
+        track,
+        membership,
+        (track.values <= missing_cutoff).astype(np.int32),
+        "preprocess_missingness",
     )
-    data = data.transpose("position", "sample_set")
-    # Coordinates are for full dataset
-    ds_out = xr.Dataset(
-        data_vars={"values": data.chunk({"sample_set": -1, "position": 1_000_000})},
-        coords={
-            "offsets": np.array(genome.offsets),
-            "contigs": np.array(genome.contigs),
-            "sample_set": base_coord.sample_set_names,
-        },
-    )
-    return ds_out

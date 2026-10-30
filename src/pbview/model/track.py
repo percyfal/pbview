@@ -45,6 +45,16 @@ if TYPE_CHECKING:
 _THRESHOLD_RE = re.compile(r"^(?P<base>.+)_missing_cutoff=(?P<t>\d+)$")
 
 
+def select_set(values: xr.DataArray, name: str) -> xr.DataArray:
+    """Select one set of a summary track along its column dim.
+
+    The column dim is `sample_set` for summaries of a user grouping and
+    `identity` for summaries of the identity.
+    """  # SHIM REFACTOR(precomputed): goes away with PrecomputedTrack
+    (dim,) = [d for d in values.dims if d != "position"]
+    return values.sel({dim: name})
+
+
 class PrecomputedTrack:
     # FIXME(pbzarr>0.6): PrecomputedTrack will live in DataStore
     """A representation of a precomputed data track."""
@@ -69,7 +79,7 @@ class PrecomputedTrack:
     def _sum_hist_cached(
         self, dataset_id: str, sample_set: str, max_coverage_bin: int
     ) -> np.ndarray:
-        sums = self.sum["values"].sel(sample_set=sample_set).data
+        sums = select_set(self.sum["values"], sample_set).data
         approx_max = int(sums.max().compute())
         if approx_max > max_coverage_bin:
             logger.warning(
@@ -103,7 +113,7 @@ class PrecomputedTrack:
 
     def _compute_contig_mean(self, sample_set: str) -> np.ndarray:
         logger.info("Calculating mean contig coverages")
-        sums_da = self.sum["values"].sel(sample_set=sample_set).data
+        sums_da = select_set(self.sum["values"], sample_set).data
         offsets = self.sum["offsets"].values
         lengths = np.diff(offsets)
         n_contigs = len(lengths)
@@ -230,6 +240,21 @@ class Track:
         """Return the list of column names."""
         return self._data[self.column_dim].values.tolist()
 
+    @property
+    def values(self) -> xr.DataArray:
+        """Track values, dims (position, <column_dim>)."""
+        return self._data["values"]
+
+    @property
+    def coords(self):
+        """Coordinates of the track data (contigs, offsets, columns)"""
+        return self._data.coords
+
+    @property
+    def attrs(self) -> dict:
+        """Attributes of the track group."""
+        return self._data.attrs
+
     def _select_positions(self, res, coord: Coordinates) -> xr.DataArray:
         # SHIM: legacy bridge: remove with Track.data(coord)
         intervals = coord.datastore.genome.resolve(coord.spatial)
@@ -269,8 +294,8 @@ class Track:
         bins = np.asarray(bins)
         name = coord.matching_sample_set()
         if name is not None and self._pre.sum is not None:
-            sums = self._select_positions(self._pre.sum["values"], coord).sel(
-                sample_set=name
+            sums = select_set(
+                self._select_positions(self._pre.sum["values"], coord), name
             )
         else:
             # Raw path
@@ -312,13 +337,12 @@ class Track:
             name is not None
             and self._pre.missing_cutoff.get(missing_cutoff) is not None
         ):
-            counts = (
+            counts = select_set(
                 self._select_positions(
                     self._pre.missing_cutoff[missing_cutoff]["values"], coord
-                )
-                .sel(sample_set=name)
-                .data
-            )
+                ),
+                name,
+            ).data
         else:
             # Raw path
             arr = self._select(self._hist_view, coord)["values"]

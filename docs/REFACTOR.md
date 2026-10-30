@@ -74,6 +74,9 @@ user grouping), and `perbase:source_grouping_hash` detects staleness.
 A track whose column dim is `identity` (a summary of the identity)
 carries no derived grouping.
 
+`compute_track_sum` and `compute_track_missingness` now use the
+membership and write the `perbase:*` attrs.
+
 - [x] `ColumnSelection` owns its invariants (tuple labels, rejects
       str, `()` allowed)
 - [x] `column` is a hashable tuple; `column_for(dim)`; `_with_column`
@@ -93,11 +96,11 @@ carries no derived grouping.
       `column`, `Track._select` column half (bridge + `_sel_columns`),
       `compute_track_sum` via `(coverage * membership).sum("sample")`,
       `matching_sample_set` reads `column`
-- [ ] grouping: `validate_grouping(s)`, `membership_from_sets`,
+- [x] grouping: `validate_grouping(s)`, `membership_from_sets`,
       `write_column_groupings`
 - [x] layout: /{track}/_meta/column_groupings (Dataset, one variable
       "<group_dim>_membership" per group dim)
-- [ ] preprocess use the writer
+- [x] preprocess use the writer
 - [x] fixtures use the writer; fixtures own groupings, never read back
 - [ ] coordinates: `_legacy_grouping` (SHIM) reads
       `groupings["sample_set"]`; reject duplicate column dims
@@ -169,10 +172,16 @@ Remove `Coordinates.datastore`.
 - Rename `pbview._compat` → `pbview._shims`?
 - `tests/conftest.py` still calls `preprocess.preprocess(p,
   sampleset_info=...)` (old signature).
-  - Move grouping_hash into grouping.py with the preprocess migration.
-    Today only the test helpers compute it.
-  - Preprocess must write summaries named by their source dim.
-  - A CLI to update or overwrite a user grouping.
+- Move grouping_hash into grouping.py with the preprocess migration.
+  Today only the test helpers compute it.
+- Preprocess must write summaries named by their source dim.
+- A CLI to update or overwrite a user grouping.
+- DataStore takes sample sets from the track groupings. After that
+  sampleset_info goes away on DataStore and on serve, mask, annotation
+  and summarize.
+- Rename the option to --sampleset-info and keep it on preprocess
+  only, plus a dedicated command to add or update a track's grouping.
+- Remove the select_set shim (REFACTOR(precomputed)).
 
 ## Contract checklist (every step)
 

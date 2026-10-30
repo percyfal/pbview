@@ -5,6 +5,7 @@ import xarray as xr
 
 from pbview.model.grouping import (
     ensure_all_set,
+    grouping_hash,
     identity_grouping,
     write_column_groupings,
 )
@@ -15,19 +16,6 @@ def genome_checksum(contigs, offsets):
     records = sorted(zip(contigs, np.diff(offsets)), key=lambda item: item[0].encode())
     payload = "".join(f"{name}\t{int(length)}\n" for name, length in records)
     return "md5:" + hashlib.md5(payload.encode()).hexdigest()
-
-
-def grouping_hash(grouping: xr.DataArray) -> str:
-    """Compute a hash for a (column, group) membership DataArray"""
-    column_dim, group_dim = grouping.dims
-    payload = b"|".join(
-        [
-            grouping.values.tobytes(),
-            *(str(s).encode() for s in grouping[column_dim].values),
-            *(str(s).encode() for s in grouping[group_dim].values),
-        ]
-    )
-    return "md5:" + hashlib.md5(payload).hexdigest()
 
 
 def update_dataset_attrs(ds: xr.Dataset, **kwargs) -> xr.Dataset:
