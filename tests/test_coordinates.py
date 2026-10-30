@@ -345,55 +345,14 @@ def test_with_samples_does_not_warn(legacy_coords):
 def test_with_samples(legacy_coords):
     coord = legacy_coords
     assert coord.with_samples(["s1", "s2"]).n_samples == 2
-    assert coord.with_samples(["s1", "s8"]).n_samples == 1
-    assert coord.with_samples(["s8"]).n_samples == 0
     assert coord.with_samples().n_samples == 7
+    assert coord.with_samples(()).n_samples == 0
 
 
-# FIXME: update for new sample selection functions
-def test_with_sample_sets(legacy_coords):
-    _ = legacy_coords
-    # assert (
-    #     coord.with_sample_sets(sample_sets=["pop1"]).n_user_sample_sets
-    #     == expected_sample_set_membership_size.n_user_sample_sets_pop1
-    # )
-    # assert (
-    #     coord.with_sample_sets(sample_sets=["pop1"]).n_sample_sets
-    #     == expected_sample_set_membership_size.n_sample_sets_pop1
-    # )
-    # assert (
-    #     coord.with_sample_sets(sample_sets=["pop1"]).n_samples
-    #     == expected_sample_set_membership_size.n_samples_pop1
-    # )
-    # assert coord.with_sample_sets(sample_sets=["pop0"]).n_user_sample_sets == 0
-    # assert coord.with_sample_sets(sample_sets=["pop0"]).n_sample_sets == 1
-    # assert (
-    #     len(
-    #         set(
-    #             coord.with_sample_sets(sample_sets=["pop1"])
-    #             .sample_set_membership_dataframe(active_only=True)["sample_set"]
-    #             .values
-    #         )
-    #     )
-    #     == expected_sample_set_membership_size.n_sampleset_membership_dataframe_pop1
-    # )
-
-
-# FIXME: update for new sample selection functions
-def test_with_samples_and_sample_sets(legacy_coords):
-    _ = legacy_coords
-    # assert (
-    #     coord.with_samples(["s1", "s2"])
-    #     .with_sample_sets(sample_sets=["pop2"])
-    #     .n_samples
-    #     == 0
-    # )
-    # assert (
-    #     coord.with_samples(["s1", "s2"])
-    #     .with_sample_sets(sample_sets=["pop1"])
-    #     .n_samples
-    #     == expected_sample_set_membership_size.n_samples_s1_s2_pop1
-    # )
+def test_with_samples_rejects_unknown_on_resolve(legacy_coords):
+    coord = legacy_coords.with_samples(["s1", "s8"])  # construction does not validate
+    with pytest.raises(ValueError, match="unknown sample labels"):
+        coord.n_samples
 
 
 def test_reset_clears_contigs(coords, genome):
@@ -489,3 +448,73 @@ def test_coordinates_resolve_for_contigs(contigs, expected, coords, genome):
 def test_with_columns_none_clears(coords):
     c = coords.with_columns(ColumnSelection("sample", ("s1",)))
     assert c.with_columns(ColumnSelection("sample", None)) == coords.reset()
+
+
+@pytest.fixture
+def set_coords(full_ds):
+    return Coordinates(full_ds)
+
+
+@pytest.mark.parametrize(
+    "sets,expected",
+    [(["pop1"], 3), (["pop1", "pop3"], 5), (["ALL"], 7), (None, 7)],
+)
+def test_with_sample_sets_counts(set_coords, sets, expected):
+    assert set_coords.with_sample_sets(sets).n_samples == expected
+
+
+def test_with_sample_sets_unknown_rejected_on_resolve(set_coords):
+    coord = set_coords.with_sample_sets(["pop0"])
+    with pytest.raises(ValueError, match="unknown sample_set labels"):
+        coord.n_samples
+
+
+def test_with_sample_sets_without_sets(coords):
+    assert coords.with_sample_sets(["ALL"]).n_samples == 7
+    with pytest.raises(ValueError, match="no 'sample_set' grouping"):
+        coords.with_sample_sets(["pop1"]).n_samples
+
+
+def test_samples_and_sample_sets_intersect(set_coords):
+    both = set_coords.with_samples(["s1", "s2"])
+    assert both.with_sample_sets(["pop2"]).n_samples == 0
+    assert both.with_sample_sets(["pop1"]).n_samples == 2
+
+
+def test_with_samples_replaces_earlier_selection(set_coords):
+    coord = set_coords.with_samples(["s1", "s2"]).with_samples(["s2", "s3"])
+    assert coord.samples.tolist() == ["s2", "s3"]
+
+
+def test_sample_selections_are_part_of_the_key(set_coords):
+    a = set_coords.with_sample_sets(["pop1"])
+    assert a == set_coords.with_sample_sets(["pop1"])
+    # same samples, different selection
+    assert a != set_coords.with_samples(["s1", "s2", "s3"])
+
+
+def test_matching_sample_set(set_coords):
+    assert set_coords.matching_sample_set() == "ALL"
+    assert set_coords.with_sample_sets(["pop2"]).matching_sample_set() == "pop2"
+    assert set_coords.with_samples(["s4", "s5"]).matching_sample_set() == "pop2"
+    assert set_coords.with_samples(["s1"]).matching_sample_set() is None
+
+
+def test_user_sample_set_names_follow_selection(set_coords):
+    assert set_coords.user_sample_set_names == ["pop1", "pop2", "pop3"]
+    assert set_coords.with_sample_sets(["pop2"]).user_sample_set_names == ["pop2"]
+
+
+def test_sample_set_summary(set_coords):
+    s = set_coords.with_sample_sets(["pop1"]).sample_set_summary()
+    assert s.loc["ALL"].tolist() == [3, 7]
+    assert s.loc["pop1"].tolist() == [3, 3]
+    assert s.loc["pop2"].tolist() == [0, 2]
+
+
+def test_overlapping_sample_sets(make_datastore, sample_sets):
+    ss = sample_sets.copy(deep=True)
+    ss[0, 1] = True  # s1 in pop1 and pop2
+    coord = Coordinates(make_datastore(sample_sets=ss))
+    assert coord.with_sample_sets(["pop1"]).samples.tolist() == ["s1", "s2", "s3"]
+    assert coord.with_sample_sets(["pop2"]).samples.tolist() == ["s1", "s4", "s5"]
