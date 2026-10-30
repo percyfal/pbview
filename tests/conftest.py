@@ -24,37 +24,6 @@ def sample_sets() -> xr.DataArray:
 
 
 @pytest.fixture
-def make_datatree(tiny_datatree):
-    """Build datatree under different settings"""
-
-    def _make(
-        with_default_sample_set: bool = False,
-        sample_sets: xr.DataArray | None = None,
-        track_name: str = "depth",
-    ):
-        if with_default_sample_set and sample_sets is not None:
-            raise ValueError(
-                "Default sample set is implicit when sample_sets is provided."
-            )
-        tree = tiny_datatree.copy(deep=True)
-        if with_default_sample_set:
-            tree = _helpers.attach_default_sample_set(tree)
-        if sample_sets is not None:
-            tree = _helpers.attach_default_sample_set(tree)
-            existing = tree[f"{track_name}/_meta/column_grouping"].to_dataset(
-                inherit=False
-            )
-            default = existing["sample_set_membership"]
-            extended = xr.concat([default, sample_sets], dim="sample_set", join="exact")
-            ss = existing.drop_dims("sample_set").assign(sample_set_membership=extended)
-            ss.attrs["perbase:grouping_hash"] = _helpers.grouping_hash(sample_sets)
-            tree[f"{track_name}/_meta/column_grouping"] = ss
-        return tree
-
-    return _make
-
-
-@pytest.fixture
 def make_datastore_path(tmp_path, tiny_datatree):
     """Build datastore path under different settings"""
 
@@ -77,33 +46,15 @@ def make_datastore_path(tmp_path, tiny_datatree):
         state += ["with_missing"] if with_missing else []
         state += ["with_sample_sets"] if sample_sets is not None else []
         state += ["with_default_sample_set"] if with_default_sample_set else []
-        label = "_".join(state)
-
-        path = tmp_path / f"store_{label}.zarr"
-        tree = tiny_datatree.copy(deep=True)
-
-        if with_default_sample_set:
-            tree = _helpers.attach_default_sample_set(tree)
-        if sample_sets is not None:
-            tree = _helpers.attach_default_sample_set(tree)
-            existing = tree[f"{track_name}/_meta/column_grouping"].to_dataset(
-                inherit=False
-            )
-            default = existing["sample_set_membership"]
-            extended = xr.concat([default, sample_sets], dim="sample_set", join="exact")
-            ss = existing.drop_dims("sample_set").assign(sample_set_membership=extended)
-            ss.attrs["perbase:grouping_hash"] = _helpers.grouping_hash(sample_sets)
-            tree[f"{track_name}/_meta/column_grouping"] = ss
-        if with_sum:
-            if not with_default_sample_set and sample_sets is None:
-                tree = _helpers.attach_default_sample_set(tree)
-            tree = _helpers.attach_sum(tree)
-        if with_missing:
-            if not with_default_sample_set and sample_sets is None:
-                _helpers.attach_default_sample_set(tree)
-            _helpers.attach_missingness(tree)
-        tree.to_zarr(path)
-        return path
+        path = tmp_path / f"store_{'_'.join(state)}.zarr"
+        return _helpers.make_store(
+            path,
+            default_set=with_default_sample_set,
+            sample_sets=sample_sets,
+            with_sum=with_sum,
+            with_missing=with_missing,
+            track_name=track_name,
+        )
 
     return _make
 

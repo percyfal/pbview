@@ -90,8 +90,8 @@ def test_lru_cache(track, coord):
 @pytest.mark.parametrize(
     "contigs,expected",
     [
-        (None, 4),
-        (("chr1",), 2),
+        (None, 3),
+        (("chr1",), 1),
     ],
 )
 def test_coverage_hist(contigs, expected, track, coord):
@@ -114,10 +114,10 @@ def test_optimal_chunking(track):
     assert cs["position"] == -1
 
 
-def test_contig_mean_coverage(track):
+def test_contig_mean_sum_coverage(track):
     np.testing.assert_allclose(
         track._pre.contig_mean_coverage("ALL"),
-        [86.5, 42.625, 31.333333],
+        [135.6, 118.25, 106.16666667],
         rtol=1e-5,
     )
 
@@ -332,21 +332,21 @@ def test_resolve_columns_sample_and_sample_set_selection(sels, expected, tiny_gr
 @pytest.mark.parametrize(
     "sels,expected",
     [
-        # (
-        #     tuple(
-        #         [
-        #             ColumnSelection(
-        #                 "sample",
-        #                 (
-        #                     "s1",
-        #                     "s2",
-        #                 ),
-        #             ),
-        #             ColumnSelection("sample_set", ("pop1",)),
-        #         ]
-        #     ),
-        #     ("s1", "s2"),
-        # ),
+        (
+            tuple(
+                [
+                    ColumnSelection(
+                        "sample",
+                        (
+                            "s1",
+                            "s2",
+                        ),
+                    ),
+                    ColumnSelection("sample_set", ("pop1",)),
+                ]
+            ),
+            ("s1", "s2"),
+        ),
         (
             tuple(
                 [
@@ -380,7 +380,6 @@ def test_resolve_columns_sample_and_sample_set_selection(sels, expected, tiny_gr
         ),
     ],
 )
-@pytest.mark.xfail(strict=True, reason="# REFACTOR: column intersection not working")
 def test_track_resolve_columns_delegation(track, sels, expected):
     result = track.resolve_columns(sels)
     assert result == expected
