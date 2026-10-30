@@ -11,6 +11,7 @@ __date__ = "2026-09-15"
 import numpy as np
 import xarray as xr
 
+from pbview import config
 from pbview.logging import app_logger as logger
 from pbview.model.grouping import grouping_hash
 from pbview.model.track import Track
@@ -24,7 +25,11 @@ _INHERITED_ATTRS = (
 
 
 def _summarize(
-    track: Track, membership: xr.DataArray, values: xr.DataArray, provenance: str
+    track: Track,
+    membership: xr.DataArray,
+    values: xr.DataArray,
+    provenance: str,
+    **extra_attrs,
 ) -> xr.Dataset:
     """Sum `values` over the columns of each group in `membership`."""
     column_dim, group_dim = membership.dims
@@ -48,6 +53,7 @@ def _summarize(
             "perbase:column_dim": group_dim,
             "perbase:source_track": track.name,
             "perbase:source_grouping_hash": grouping_hash(membership),
+            **extra_attrs,
         },
     )
 
@@ -63,7 +69,7 @@ def compute_track_sum(track: Track, membership: xr.DataArray) -> xr.Dataset:
     """
     logger.info("Computing sums for %d groups", membership.shape[1])
     return _summarize(
-        track, membership, track.values.astype(np.int32), "preprocess_sum"
+        track, membership, track.values.astype(np.int32), config.SUMMARY_SUM
     )
 
 
@@ -76,5 +82,6 @@ def compute_track_missingness(
         track,
         membership,
         (track.values <= missing_cutoff).astype(np.int32),
-        "preprocess_missingness",
+        config.SUMMARY_MISSINGNESS,
+        **{"perbase:missing_cutoff": missing_cutoff},
     )

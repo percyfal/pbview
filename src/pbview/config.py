@@ -39,6 +39,10 @@ VCARD_STYLE = {
 # Grouping set settings
 DEFAULT_GROUPING_SET = "ALL"
 
+# Summary track provenance, written by preprocess and used to find summaries
+SUMMARY_SUM = "preprocess_sum"
+SUMMARY_MISSINGNESS = "preprocess_missingness"
+
 # Chunking
 
 MIN_POSITION_CHUNK_SIZE = os.environ.get("PBVIEW_MIN_POSITION_CHUNK_SIZE", 1_000_000)

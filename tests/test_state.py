@@ -140,3 +140,8 @@ def test_filtered_applies_columns(coords):
     sel = ColumnSelection("sample", ("s1",))
     c = SelectionStateBase._filtered(coords, 0, float("inf"), (sel,), ())
     assert c.column == (sel,)
+
+
+def test_state_requires_summaries(raw_ds):
+    with pytest.raises(ValueError, match="pbview preprocess"):
+        SelectionStateBase(datastore=raw_ds)

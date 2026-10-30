@@ -137,7 +137,7 @@ class SummaryPage(pn.viewable.Viewer):
         )
         dflist = []
         for s in self.track.groups("sample_set", coord.column):
-            means = self.track._pre.contig_mean_coverage(s)
+            means = self.track.contig_mean_coverage(s)
             n_samples = self.track.n_selected(coord.with_sample_sets([s]).column)
             dflist.append(
                 pd.DataFrame(

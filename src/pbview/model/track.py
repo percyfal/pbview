@@ -8,15 +8,14 @@ __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
-import re
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from functools import lru_cache
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 import dask.array as da
 import numpy as np
-import panel as pn
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -35,7 +34,6 @@ from pbview.model.grouping import (
     validate_track_groupings,
 )
 
-from ._identity import datatree_id
 from .chunking import optimal_chunks_dask
 
 if TYPE_CHECKING:
@@ -45,102 +43,6 @@ if TYPE_CHECKING:
         PositionIntervals,
         ResolvedSelection,
     )
-
-
-_THRESHOLD_RE = re.compile(r"^(?P<base>.+)_missing_cutoff=(?P<t>\d+)$")
-
-
-def select_set(values: xr.DataArray, name: str) -> xr.DataArray:
-    """Select one set of a summary track along its column dim.
-
-    The column dim is `sample_set` for summaries of a user grouping and
-    `identity` for summaries of the identity.
-    """  # SHIM REFACTOR(precomputed): goes away with PrecomputedTrack
-    (dim,) = [d for d in values.dims if d != "position"]
-    return values.sel({dim: name})
-
-
-class PrecomputedTrack:
-    # FIXME(pbzarr>0.6): PrecomputedTrack will live in DataStore
-    """A representation of a precomputed data track."""
-
-    def __init__(self, dt: xr.DataTree | None, track_name: str = "depth"):
-        self._local_cache = {}
-        self._contig_mean_cache: dict[str, np.ndarray] = {}
-        self._id = datatree_id(dt, schema_version=config.SCHEMA_VERSION)
-        if dt is None:
-            self.sum = None
-            self.missing_cutoff = {}
-            return
-
-        self.sum = dt.get(f"{track_name}_sum")
-        self.missing_cutoff = {}
-        for key in dt:
-            m = _THRESHOLD_RE.match(key)
-            if m and m.group("base") == track_name:
-                self.missing_cutoff[int(m.group("t"))] = dt[key]
-
-    @pn.cache
-    def _sum_hist_cached(
-        self, dataset_id: str, sample_set: str, max_coverage_bin: int
-    ) -> np.ndarray:
-        sums = select_set(self.sum["values"], sample_set).data
-        approx_max = int(sums.max().compute())
-        if approx_max > max_coverage_bin:
-            logger.warning(
-                "Coverage sum histogram exceeds configured maximum (%d > %d). "
-                "Truncating to max coverage bin.",
-                approx_max,
-                max_coverage_bin,
-            )
-            approx_max = max_coverage_bin
-        return da.bincount(sums, minlength=approx_max + 1).compute()
-
-    def sum_hist(self, sample_set: str, n_samples: int) -> np.ndarray:
-        if sample_set not in self._local_cache:
-            max_coverage_bin = min(
-                n_samples * config.MAX_COVERAGE_PER_SAMPLE,
-                config.MAX_COVERAGE_BIN,
-            )
-            self._local_cache[sample_set] = self._sum_hist_cached(
-                self._id, sample_set, max_coverage_bin
-            )
-        return self._local_cache[sample_set]
-
-    def contig_mean_coverage(self, sample_set: str) -> np.ndarray:
-        if sample_set not in self._contig_mean_cache:
-            # FIXME: make progress optional
-            with ProgressBar():
-                self._contig_mean_cache[sample_set] = self._compute_contig_mean(
-                    sample_set
-                )
-        return self._contig_mean_cache[sample_set]
-
-    def _compute_contig_mean(self, sample_set: str) -> np.ndarray:
-        logger.info("Calculating mean contig coverages")
-        sums_da = select_set(self.sum["values"], sample_set).data
-        offsets = self.sum["offsets"].values
-        lengths = np.diff(offsets)
-        n_contigs = len(lengths)
-
-        def _partial_reduceat(chunk, block_info=None):
-            start = block_info[0]["array-location"][0][0]
-            end = block_info[0]["array-location"][0][1]
-            first = np.searchsorted(offsets, start, side="right") - 1
-            last = np.searchsorted(offsets, end, side="left")
-            local_offsets = np.clip(offsets[first : last + 1] - start, 0, len(chunk))
-            if len(local_offsets) < 2:
-                return np.zeros(n_contigs, dtype=np.int64)
-            reduced = np.add.reduceat(chunk, local_offsets[:-1])
-            partial = np.zeros(n_contigs, dtype=np.int64)
-            partial[first : first + len(reduced)] = reduced
-            return partial.reshape(1, -1)
-
-        per_chunk = sums_da.map_blocks(
-            _partial_reduceat, dtype=np.int64, chunks=(1, n_contigs), new_axis=1
-        )
-        per_contig_sum = per_chunk.sum(axis=0).compute()
-        return per_contig_sum / lengths
 
 
 def _isel_intervals(data: xr.Dataset, intervals: PositionIntervals):
@@ -174,8 +76,8 @@ class Track:
     Args:
         track_name: name of track
         data: pbzarr data group
-        preprocess_data: preprocessing data set
-        meta: metadata for the track
+        groupings: stored user groupings of the track columns
+        summaries: summary tracks computed from this track
 
     Returns:
         A Track object.
@@ -188,14 +90,13 @@ class Track:
         self,
         track_name: str,
         data: xr.DataTree,
-        preprocess_data: xr.DataTree
-        | None = None,  # SHIM: remove with PrecomputedTrack
         *,
         groupings: tuple[xr.DataArray, ...] | None = None,
+        summaries: Summaries | None = None,
     ):
         self.name = track_name
         self._data = data
-        self._pre = PrecomputedTrack(preprocess_data, track_name=track_name)
+        self.summaries = summaries if summaries is not None else Summaries()
         column_dims = [dim for dim in data.dims if dim not in self.SPATIAL_DIMS]
         if len(column_dims) > 1:
             raise ValueError(
@@ -229,12 +130,12 @@ class Track:
 
     @classmethod
     def from_tree(
-        cls, name: str, data: xr.DataTree, raw: xr.DataTree | None = None, **legacy
+        cls, name: str, data: xr.DataTree, raw: xr.DataTree | None = None, **kwargs
     ) -> "Track":
         node = raw.children.get(name)
         gnode = node.children.get("_meta", {}).get(GROUPING_NAME)
         groupings = tuple(gnode.dataset.data_vars.values()) if gnode is not None else ()
-        return cls(name, data, groupings=groupings, **legacy)
+        return cls(name, data, groupings=groupings, **kwargs)
 
     @property
     def groupings(self) -> Mapping[str, xr.DataArray]:
@@ -336,6 +237,69 @@ class Track:
         """Attributes of the track group."""
         return self._data.attrs
 
+    def column(self, label: str) -> xr.DataArray:
+        """Values of one column, dims (position,)."""
+        return self.values.sel({self.column_dim: label})
+
+    def _require_sum(self) -> Track:
+        if self.summaries.sum is None:
+            raise ValueError(
+                f"track {self.name!r} has no sum summary; run `pbview preprocess`"
+            )
+        return self.summaries.sum
+
+    @lru_cache(maxsize=None)
+    def sum_hist(self, sample_set: str, n_samples: int) -> np.ndarray:
+        """Histogram over the genome of the summed coverage of a sample set."""
+        max_coverage_bin = min(
+            n_samples * config.MAX_COVERAGE_PER_SAMPLE, config.MAX_COVERAGE_BIN
+        )
+        sums = self._require_sum().column(sample_set).data
+        approx_max = int(sums.max().compute())
+        if approx_max > max_coverage_bin:
+            logger.warning(
+                "Coverage sum histogram exceeds configured maximum (%d > %d). "
+                "Truncating to max coverage bin.",
+                approx_max,
+                max_coverage_bin,
+            )
+            approx_max = max_coverage_bin
+        return da.bincount(sums, minlength=approx_max + 1).compute()
+
+    @lru_cache(maxsize=None)
+    def contig_mean_coverage(self, sample_set: str) -> np.ndarray:
+        """Mean summed coverage per contig for a sample set."""
+        # FIXME: make progress optional
+        with ProgressBar():
+            return self._compute_contig_mean(sample_set)
+
+    def _compute_contig_mean(self, sample_set: str) -> np.ndarray:
+        logger.info("Calculating mean contig coverages")
+        summary = self._require_sum()
+        sums_da = summary.column(sample_set).data
+        offsets = summary.coords["offsets"].values
+        lengths = np.diff(offsets)
+        n_contigs = len(lengths)
+
+        def _partial_reduceat(chunk, block_info=None):
+            start = block_info[0]["array-location"][0][0]
+            end = block_info[0]["array-location"][0][1]
+            first = np.searchsorted(offsets, start, side="right") - 1
+            last = np.searchsorted(offsets, end, side="left")
+            local_offsets = np.clip(offsets[first : last + 1] - start, 0, len(chunk))
+            if len(local_offsets) < 2:
+                return np.zeros(n_contigs, dtype=np.int64)
+            reduced = np.add.reduceat(chunk, local_offsets[:-1])
+            partial = np.zeros(n_contigs, dtype=np.int64)
+            partial[first : first + len(reduced)] = reduced
+            return partial.reshape(1, -1)
+
+        per_chunk = sums_da.map_blocks(
+            _partial_reduceat, dtype=np.int64, chunks=(1, n_contigs), new_axis=1
+        )
+        per_contig_sum = per_chunk.sum(axis=0).compute()
+        return per_contig_sum / lengths
+
     def select(self, resolved: ResolvedSelection) -> xr.Dataset:
         """Select the resolved columns and positions (original chunking)."""
         if resolved.column_dim != self.column_dim:
@@ -372,10 +336,9 @@ class Track:
         bins = np.asarray(bins)
         resolved = self._resolve(coord)
         name = self.matching_group(coord.column)
-        if name is not None and self._pre.sum is not None:
-            sums = select_set(
-                _isel_intervals(self._pre.sum["values"], resolved.intervals), name
-            )
+        summary = self.summaries.sum
+        if name is not None and summary is not None:
+            sums = _isel_intervals(summary.column(name), resolved.intervals)
         else:
             # Raw path
             arr = select_data(self._hist_view, resolved)["values"]
@@ -413,17 +376,9 @@ class Track:
         resolved = self._resolve(coord)
         name = self.matching_group(coord.column)
 
-        if (
-            name is not None
-            and self._pre.missing_cutoff.get(missing_cutoff) is not None
-        ):
-            counts = select_set(
-                _isel_intervals(
-                    self._pre.missing_cutoff[missing_cutoff]["values"],
-                    resolved.intervals,
-                ),
-                name,
-            ).data
+        summary = self.summaries.missingness.get(missing_cutoff)
+        if name is not None and summary is not None:
+            counts = _isel_intervals(summary.column(name), resolved.intervals).data
         else:
             # Raw path
             arr = select_data(self._hist_view, resolved)["values"]
@@ -464,3 +419,46 @@ class Track:
     # operation is not. Would need reactive "UPDATE" button.
     def size(self):
         pass
+
+
+@dataclass(frozen=True, eq=False)
+class Summaries:
+    """Summary tracks computed from a base track.
+
+    Found through `perbase:source_track` and `perbase:provenance`,
+    never by name.
+    """
+
+    sum: Track | None = None
+    missingness: Mapping[int, Track] = field(default_factory=dict)
+
+
+def find_summaries(tracks: Iterable[Track]) -> dict[str, Summaries]:
+    """Group summary tracks by their source track.
+
+    Several summaries of one kind for the same source are ambiguous:
+    the first by track name is kept and the others are logged.
+    """
+    sums: dict[str, Track] = {}
+    miss: dict[str, dict[int, Track]] = {}
+
+    def keep(found: dict, key, track: Track):
+        if key in found:
+            logger.warning(
+                "Ignoring summary %r: %r already summarizes the same source",
+                track.name,
+                found[key].name,
+            )
+        else:
+            found[key] = track
+
+    for t in sorted(tracks, key=lambda t: t.name):
+        source = t.attrs.get("perbase:source_track")
+        kind = t.attrs.get("perbase:provenance")
+        if source is None:
+            continue
+        if kind == config.SUMMARY_SUM:
+            keep(sums, source, t)
+        elif kind == config.SUMMARY_MISSINGNESS and "perbase:missing_cutoff" in t.attrs:
+            keep(miss.setdefault(source, {}), int(t.attrs["perbase:missing_cutoff"]), t)
+    return {s: Summaries(sums.get(s), miss.get(s, {})) for s in {*sums, *miss}}

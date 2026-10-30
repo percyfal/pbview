@@ -129,17 +129,23 @@ genome))`.
 - [x] `selection_overview` rebuilt from the genome, `Track.n_selected`
       and `Track.group_counts`
 
-### 5. precomputed: TODO
+### 5. precomputed: IN PROGRESS
 
 Remove `PrecomputedTrack`, `preprocess_data`, `Track._pre`.
 
-- [ ] Summaries found via `DataStore.summaries_of(track_name)` using
+Summaries are recognised by `perbase:source_track` and
+`perbase:provenance` (`config.SUMMARY_SUM`,
+`config.SUMMARY_MISSINGNESS`); missingness summaries record
+`perbase:missing_cutoff`. Stores preprocessed earlier have neither and
+must be preprocessed again.
+
+- [x] Summaries found via `DataStore.summaries_of(track_name)` using
   `perbase:source_track`.
-- [ ] Old stores: rerun `preprocess`; no name-based fallback.
-- [ ] Replace `_coverage_hist_cached`'s use of `matching_sample_set` /
+- [x] Old stores: rerun `preprocess`; no name-based fallback.
+- [x] Replace `_coverage_hist_cached`'s use of `matching_sample_set` /
   `_pre.sum`.
 - [ ] convert Track to @dataclass(frozen=True, eq=False);
-      __post_init__ calls validate_grouping (blocked by `_pre`)
+      __post_init__ calls validate_grouping
 
 ### 6. datastore: TODO (last)
 
@@ -182,7 +188,6 @@ Remove `Coordinates.datastore`.
 - A CLI to update or overwrite a user grouping.
 - Rename the option to --sampleset-info and keep it on preprocess
   only, plus a dedicated command to add or update a track's grouping.
-- Remove the select_set shim (REFACTOR(precomputed)).
 
 ## Contract checklist (every step)
 
