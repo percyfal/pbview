@@ -108,14 +108,13 @@ def compute_thresholds(
         for ss in track.groups("sample_set"):
             # FIXME: Add option to choose by sample stats
             by_sample = False
-            n_samples = track.n_selected(coord.with_sample_sets([ss]).column)
+            resolved = coord.with_sample_sets([ss]).resolve_for(track, ds.genome)
+            n_samples = len(resolved.labels)
             n = n_samples if by_sample else 1
             maxbins = defaults[f"maxbins_{ss}"]
             bins = np.arange(maxbins + 1)
 
-            counts, bins = track.coverage_hist(
-                bins=bins, coord=coord.with_sample_sets([ss])
-            )
+            counts, bins = track.coverage_hist(bins=bins, resolved=resolved)
             lo, up = defaults[f"lower_coverage_{ss}"], defaults[f"upper_coverage_{ss}"]
             stats = hist_stats(counts, bins)
             mask = (bins >= lo / n) & (bins <= up / n)

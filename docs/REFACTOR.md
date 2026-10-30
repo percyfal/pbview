@@ -151,9 +151,8 @@ must be preprocessed again.
 
 Remove `Coordinates.datastore`.
 
-- [ ] `Track.coverage_hist` / `missingness_hist` take a
-      `ResolvedSelection` instead of a `Coordinates` (they read
-      `coord.datastore.genome` in `Track._resolve`)
+- [x] `Track.coverage_hist` / `missingness_hist` take a
+      `ResolvedSelection` instead of a `Coordinates`
 - [ ] `reset()` -> `Coordinates()`
 - [ ] `ds.base_coord` → `Coordinates()` (many call sites; mechanical).
 - [ ] `genome` / `coords` fixtures become literals.

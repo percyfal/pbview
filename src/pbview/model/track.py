@@ -39,7 +39,6 @@ from .chunking import optimal_chunks_dask
 if TYPE_CHECKING:
     from pbview.model.coordinates import (
         ColumnSelection,
-        Coordinates,
         PositionIntervals,
         ResolvedSelection,
     )
@@ -174,14 +173,15 @@ class Track:
         Falls back to the identity grouping when the track has no
         grouping for `dim`. The default set is always listed first.
         """
+        return self._groups_of(self.resolve_columns(selections), dim)
+
+    def _groups_of(self, labels: Iterable[str], dim: str) -> tuple[str, ...]:
         default = config.DEFAULT_GROUPING_SET
         grouping = self._grouping_for(dim)
         if grouping is None:  # a summary of the identity: its columns are the set
             return (default,)
         group_dim = grouping.dims[1]
-        selected = np.isin(
-            grouping[self.column_dim].values, self.resolve_columns(selections)
-        )
+        selected = np.isin(grouping[self.column_dim].values, list(labels))
         present = grouping.values[selected].any(axis=0)
         names = grouping[group_dim].values.tolist()
         return (default, *(n for n, p in zip(names, present) if p and n != default))
@@ -190,7 +190,10 @@ class Track:
         self, selections: Iterable[ColumnSelection], dim: str = "sample_set"
     ) -> str | None:
         """Name of the group of `dim` whose members equal the selected columns."""
-        selected = set(self.resolve_columns(selections))
+        return self._matching_group_of(self.resolve_columns(selections), dim)
+
+    def _matching_group_of(self, labels: Iterable[str], dim: str) -> str | None:
+        selected = set(labels)
         grouping = self._grouping_for(dim)
         if grouping is None:
             return (
@@ -198,7 +201,7 @@ class Track:
             )
         group_dim = grouping.dims[1]
         columns = grouping[self.column_dim].values
-        for name in self.groups(dim, selections):
+        for name in self._groups_of(selected, dim):
             members = columns[grouping.sel({group_dim: name}).values]
             if set(members.tolist()) == selected:
                 return name
@@ -321,18 +324,12 @@ class Track:
             )
         return select_data(self.data, resolved)
 
-    def _resolve(self, coord: Coordinates) -> ResolvedSelection:
-        # SHIM REFACTOR(datastore): the genome comes from Coordinates.datastore
-        return coord.resolve_for(self, coord.datastore.genome)
-
     def _optimal_chunks(self, reduce_along: str) -> dict:
         """Return optimal chunk sizes for a dask array based on target bytes."""
         logger.debug(
             "Calculating optimal chunks for target bytes: %s", self.TARGET_BYTES
         )
-        return optimal_chunks_dask(
-            self.data["values"], reduce_along, self.TARGET_BYTES
-        )
+        return optimal_chunks_dask(self.data["values"], reduce_along, self.TARGET_BYTES)
 
     @property
     def _hist_view(self):
@@ -342,12 +339,13 @@ class Track:
         return self.data.chunk(self._optimal_chunks(self.column_dim))
 
     @lru_cache(maxsize=64)
-    def _coverage_hist_cached(self, bins: npt.NDArray[int], coord: Coordinates):
+    def _coverage_hist_cached(
+        self, bins: npt.NDArray[int], resolved: ResolvedSelection
+    ):
         logger.info("Calculating histogram of coverage for '%s' track", self.name)
-        logger.debug("Current selection: %s", coord)
+        logger.debug("Current selection: %s", resolved)
         bins = np.asarray(bins)
-        resolved = self._resolve(coord)
-        name = self.matching_group(coord.column)
+        name = self._matching_group_of(resolved.labels, "sample_set")
         summary = self.summaries.sum
         if name is not None and summary is not None:
             sums = _isel_intervals(summary.column(name), resolved.intervals)
@@ -364,29 +362,29 @@ class Track:
     def coverage_hist(
         self,
         bins: npt.NDArray[int],
-        coord: Coordinates,
+        resolved: ResolvedSelection,
     ):
-        """Calculate coverage histogram for a given number of bins and coordinate state.
+        """Calculate coverage histogram for a given number of bins and selection.
 
         The histogram values are calculated as the sum of values across all samples.
 
         Args:
             bins: number of bins for histogram
-            coord: coordinate state for data selection
+            resolved: selection resolved for this track
+                (`Coordinates.resolve_for`)
         Returns:
             Histogram, bins as a numpy arrays
         """
-        return self._coverage_hist_cached(tuple(bins.tolist()), coord)
+        return self._coverage_hist_cached(tuple(bins.tolist()), resolved)
 
     @lru_cache(maxsize=64)
     def _missingness_hist_cached(
-        self, bins: npt.NDArray, coord: Coordinates, missing_cutoff: int
+        self, bins: npt.NDArray, resolved: ResolvedSelection, missing_cutoff: int
     ):
         logger.info("Calculating missingness histogram for '%s' track", self.name)
-        logger.debug("Current selection: %s", coord)
+        logger.debug("Current selection: %s", resolved)
         bins = np.asarray(bins)
-        resolved = self._resolve(coord)
-        name = self.matching_group(coord.column)
+        name = self._matching_group_of(resolved.labels, "sample_set")
 
         summary = self.summaries.missingness.get(missing_cutoff)
         if name is not None and summary is not None:
@@ -403,24 +401,25 @@ class Track:
 
     def missingness_hist(
         self,
-        coord: Coordinates,
+        resolved: ResolvedSelection,
         missing_cutoff: int = 0,
     ):
         """Calculate missingness histogram for a given number of bins
-        and coordinate state.
+        and selection.
 
         The histogram values are calculated as the number of values across all
         samples greater than missing_cutoff.
 
         Args:
-            coord: coordinate state for data selection
+            resolved: selection resolved for this track
+                (`Coordinates.resolve_for`)
             missing_cutoff: cutoff value to treat values as missing (default: 0)
         Returns:
             Histogram, bins as a numpy arrays
         """
-        bins = np.arange(0, self.n_selected(coord.column) + 1)
+        bins = np.arange(0, len(resolved.labels) + 1)
         return self._missingness_hist_cached(
-            tuple(bins.tolist()), coord, missing_cutoff
+            tuple(bins.tolist()), resolved, missing_cutoff
         )
 
     # FIXME: would it be possible to cheaply calculate the *combined*

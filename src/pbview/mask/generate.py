@@ -75,7 +75,6 @@ def generate_mask(
     logger.info("Writing accessible sites to pbzarr store at %s", output)
     show_progress = ProgressBar() if progress else nullcontext()
 
-    track = ds.tracks[track_name]
     with open(threshold, "r") as f:
         threshold_data = ThresholdProfile.from_yaml(f.read())
     summaries = ds.summaries_of(track_name)
