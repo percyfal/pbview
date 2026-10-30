@@ -59,7 +59,7 @@ Contig mask (`_contig_selected`) replaced by `SpatialSelection` +
   tests.
 - Prerequisite for samples.
 
-### 3. samples: IN PROGRESS
+### 3. samples: DONE
 
 Sample mask (`_sample_selected`) replaced by `column:
 tuple[ColumnSelection, ...]` resolved by the track.
@@ -94,7 +94,7 @@ membership and write the `perbase:*` attrs.
       `resolve_for(track, genome)`
 - [x] migrate: `_key()` uses column, `matching_sample_set` reads
       column
-- [ ] migrate: `_filtered` / `SelectionStateBase`, `Track._select`
+- [x] migrate: `_filtered` / `SelectionStateBase`, `Track._select`
       column half (bridge + `_sel_columns`), `compute_track_sum` via
       `(coverage * membership).sum("sample")`
 - [x] grouping: `validate_grouping(s)`, `membership_from_sets`,
@@ -103,9 +103,9 @@ membership and write the `perbase:*` attrs.
       "<group_dim>_membership" per group dim)
 - [x] preprocess use the writer
 - [x] fixtures use the writer; fixtures own groupings, never read back
-- [ ] coordinates: `_legacy_grouping` (SHIM) reads
+- [x] coordinates: `_legacy_grouping` (SHIM) reads
       `groupings["sample_set"]`; reject duplicate column dims
-- [ ] contract: delete mask, property, accessors (`samples_all`,
+- [x] contract: delete mask, property, accessors (`samples_all`,
       `n_samples*`, `sample_set_membership_all`, ...), `_replace`,
       `"active": ...` dict builders, shim tests
 
@@ -161,17 +161,18 @@ Remove `Coordinates.datastore`.
 
 ## Stubbed / known gaps (app)
 
-- `SelectionStateBase.summary_df`: sample row and sample-set table
-  missing → samples
-- `selection_overview` stub in the app → samples
-- `sample_set_summary`: deleted or stubbed → samples
+- `selection_overview` stub in the app: sample row and sample-set
+  table missing → track-select (rebuild from `resolve_for`,
+  `Track.n_selected` and `Track.groups`)
+- `SelectionStateBase.summary_df`, `sample_sets_df` and
+  `Coordinates.sample_set_summary` were broken or unused and are
+  deleted → rebuilt together with `selection_overview` in track-select
 - `SelectionStateBase` itself is legacy; when replaced, `_filtered`
   moves with the UI state (its body is already final API) → after
   datastore
 
 ## Open questions
 
-- Both `sample` and `sample_set` selected: intersect? (pin with test)
 - Order: finish samples first, or do track-select first to shrink it?
 - Rename `pbview._compat` → `pbview._shims`?
 - `tests/conftest.py` still calls `preprocess.preprocess(p,
@@ -183,7 +184,6 @@ Remove `Coordinates.datastore`.
 - Rename the option to --sampleset-info and keep it on preprocess
   only, plus a dedicated command to add or update a track's grouping.
 - Remove the select_set shim (REFACTOR(precomputed)).
-- Overlapping sets raise until the `Coordinates` migration
 
 ## Contract checklist (every step)
 
@@ -192,5 +192,6 @@ Remove `Coordinates.datastore`.
 2. `pixi r test` and `pixi r test -- -W
    error::pbview._compat.ShimWarning`
 3. `pixi r lint`
-4. `git grep -nw` on every removed name: empty
+4. `git grep -nw` on every removed name, in `src` and `tests` (not
+   `obsolete.py`): empty
 5. Start the app and run the CLI once; exercise the affected widgets

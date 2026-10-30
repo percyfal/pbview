@@ -195,25 +195,6 @@ class DataStore:
         return config.DEFAULT_GROUPING_SET
 
     @functools.cached_property
-    def default_sample_set_membership(self) -> npt.NDArray:
-        return np.repeat(self.default_sample_set_name, self.n_samples)
-
-    @functools.cached_property
-    def sample_set_membership(self) -> npt.NDArray:
-        """One set label per sample (legacy single-label view)."""
-        grouping = self._sample_set_grouping
-        if grouping is None:
-            return self.default_sample_set_membership
-        user = grouping.drop_sel(sample_set=self.default_sample_set_name)
-        if user.sizes["sample_set"] == 0:
-            return self.default_sample_set_membership
-        n = user.sum("sample_set").values
-        if (n > 1).any():
-            raise ValueError("Overlapping sample sets are not supported yet")
-        first = user["sample_set"].values[user.values.argmax(axis=1)]
-        return np.where(n == 1, first, self.default_sample_set_name).astype(str)
-
-    @functools.cached_property
     def sample_set_names(self) -> list:
         return [self.default_sample_set_name, *self.user_sample_set_names]
 

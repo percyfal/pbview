@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 import param
 
-from pbview import config
 from pbview.model.coordinates import ColumnSelection, Coordinates
 
 if TYPE_CHECKING:
@@ -101,21 +100,6 @@ class SelectionStateBase(param.Parameterized):
             ),
         )
 
-    @param.depends("lower", "upper", "contigs", watch=True)
-    def _apply_contig_filters(self):
-        """Push contig length param changes into the mutable coord object."""
-        requested = tuple(self.contigs) or None
-        genome = self.coord.datastore.genome  # SHIM: remove with Coordinates.datastore
-        keep = genome.contigs_in_length_range(
-            lower=self.lower, upper=self.upper, contigs=requested
-        )
-        self.coord.with_contigs(contigs=keep)
-
-    @param.depends("samples", watch=True)
-    def _apply_sample_filters(self):
-        """Push sample param changes into the mutable coord object."""
-        self.coord.with_samples(samples=self.samples or None)
-
     @param.depends("lower", "upper", "contigs")
     def contigs_df(self):
         regions = self._genome().contig_regions(self._current().spatial)
@@ -125,32 +109,6 @@ class SelectionStateBase(param.Parameterized):
                 "contig_len": np.array([e for _, _, e in regions], dtype=np.int64),
             }
         )
-
-    @param.depends("samples", "contigs")
-    def sample_sets_df(self):
-        df = pd.DataFrame(
-            {
-                "sample set": self.coord._default_sample_set_membership,
-                "Active": self.coord.sample_selected,
-                "Total": self.coord._samples_all,
-            }
-        )
-        if not np.all(self.coord._sample_set_membership == config.DEFAULT_GROUPING_SET):
-            df = pd.concat(
-                df,
-                pd.DataFrame(
-                    {
-                        "sample_sets": self.coord._sample_set_membership,
-                        "Active": self.coord.sample_selected,
-                        "Total": self.coord._samples_all,
-                    }
-                ),
-            )
-        return df.groupby("sample set").agg({"Active": "sum", "Total": "count"})
-
-    @param.depends("lower", "upper", "samples", "contigs")
-    def summary_df(self):
-        return self.coord.to_dataframe()
 
     @param.depends("active_track")
     def track(self):

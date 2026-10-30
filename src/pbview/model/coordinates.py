@@ -12,11 +12,10 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import cached_property
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import xarray as xr
 
 if TYPE_CHECKING:
@@ -24,8 +23,6 @@ if TYPE_CHECKING:
     from .track import Track
 
 from pbview import config
-from pbview._compat import _warn_shim
-from pbview.model.grouping import IDENTITY_DIM
 
 xr.set_options(display_expand_attrs=False)
 
@@ -51,7 +48,11 @@ def resolve_columns(
             continue
         grouping = groupings.get(sel.column_dim)
         if grouping is None:
-            continue
+            if (sel.column_dim, column_dim) in _PROJECTIONS:
+                raise ValueError(
+                    f"no {sel.column_dim!r} grouping for the {column_dim!r} track"
+                )
+            continue  # the selection does not apply to this track
         groups = grouping[sel.column_dim].values
         _check_known(sel.labels, groups, sel.column_dim)
         cols = np.isin(groups, sel.labels)
@@ -279,41 +280,15 @@ class ResolvedSelection:
     labels: tuple[str, ...]  # explicit; empty means empty
 
 
-def _legacy_grouping(datastore) -> xr.DataArray | None:
-    # SHIM(samples): store-level grouping from track meta; delete on contract
-    stored = [
-        {k: v for k, v in t.groupings.items() if k != IDENTITY_DIM}
-        for t in datastore.tracks.values()
-        if t.column_dim == "sample"
-    ]
-    stored = [g for g in stored if g]
-    if not stored:
-        return None
-    first = stored[0]
-    for g in stored[1:]:
-        if g.keys() != first.keys() or any(not g[k].equals(first[k]) for k in g):
-            raise ValueError("tracks disagree on sample grouping")
-    return first
-
-
 @dataclass(frozen=True)
 class Coordinates:
     """Immutable class representation of active sample/contig
     coordinates.
 
-    Representation of samples, contigs and contig lengths. Provides
-    convenience functions to subset coordinates and to keep track of
-    active samples and contigs. Every filter operation returns a *new*
-    `Coordinates` object. The derived quantities are cached per
-    instance.
-
-    The full coordinate set is saved in private variables, meaning a
-    `Coordinates` object always has access to the full data view.
-
-    Variable and function names with suffix `_all` refer to the full
-    coordinate set, while those without suffix refer to the active
-    subset.
-
+    A pure value: a `SpatialSelection` and at most one
+    `ColumnSelection` per column dimension. Every `with_*` method
+    returns a *new* `Coordinates` object. Selections are resolved
+    against their universes, `Genome` and `Track`, never here.
     """
 
     # FIXME: new conversation emphasizes that Coordinates should *not*
@@ -328,22 +303,6 @@ class Coordinates:
         dims = [c.column_dim for c in self.column]
         if len(dims) != len(set(dims)):
             raise ValueError(f"duplicate column dims: {dims}")
-
-    @cached_property
-    def _sample_selected(self) -> npt.NDArray[np.bool_]:
-        """Legacy sample mask.
-
-        SHIM REFACTOR(samples): store-level universe; delete on
-        contract.
-        """
-        groupings = _legacy_grouping(self.datastore) or {}
-        known = (*groupings, IDENTITY_DIM, "sample")
-        for sel in self.column:
-            if sel.labels is not None and sel.column_dim not in known:
-                raise ValueError(f"no {sel.column_dim!r} grouping in the store")
-        samples = np.asarray(self.datastore.samples)
-        labels = resolve_columns(self.column, "sample", samples, groupings)
-        return np.isin(samples, labels)
 
     def _key(self) -> tuple:
         return (
@@ -373,21 +332,6 @@ class Coordinates:
             track.column_dim,
             track.resolve_columns(self.column),
         )
-
-    def matching_sample_set(self) -> str | None:
-        """Name of the sample set whose members equal the current selection."""
-        selected = set(self.samples.tolist())
-        for name in self.sample_set_names:
-            if set(self._set_members(name).tolist()) == selected:
-                return name
-        return None
-
-    def _set_members(self, name: str) -> npt.NDArray:
-        # SHIM REFACTOR(samples): store-level view of the sample sets
-        grouping = self.datastore._sample_set_grouping
-        if grouping is None:
-            return self.samples_all  # Only the default sample set exists
-        return self.samples_all[grouping.sel(sample_set=name).values]
 
     # Factory methods
     def with_contigs(
@@ -443,27 +387,9 @@ class Coordinates:
         )  # SHIM: becomes Coordinates() in (6.)
 
     @property
-    def samples_all(self) -> npt.NDArray:
-        """All samples in the dataset"""
-        return self.datastore.samples
-
-    @property
-    def n_samples_all(self) -> int:
-        return self.datastore.n_samples
-
-    @property
     def offsets(self) -> npt.NDArray:
         """Contig offsets"""
         return self.datastore.offsets
-
-    @property
-    def sample_selected(self):  # SHIM
-        _warn_shim("Coordinates.sample_selected", "resolve_for(track, genome)")
-        return self._sample_selected
-
-    @property
-    def sample_excluded(self):
-        return ~self._sample_selected
 
     def selected_contigs(self, genome: Genome) -> tuple[str, ...]:
         """Currently selected contigs"""
@@ -471,101 +397,4 @@ class Coordinates:
 
     def selected_columns(self, track: Track) -> tuple[str, ...]:
         """Currently selected columns"""
-        return track.resolve
-
-    @property
-    def samples(self) -> Any:
-        """Return selected samples"""
-        return self.samples_all[self._sample_selected]
-
-    @property
-    def n_samples(self):
-        return int(self.samples.size)
-
-    @property
-    def sample_set_membership(self):
-        """Return sample sets per sample"""
-        return self.datastore.sample_set_membership[self._sample_selected]
-
-    @property
-    def sample_set_membership_all(self):
-        """Return sample sets per sample"""
-        return self.datastore.sample_set_membership
-
-    @property
-    def default_sample_set_membership(self):
-        return self.datastore.default_sample_set_membership[self._sample_selected]
-
-    @property
-    def default_sample_set_membership_all(self):
-        return self.datastore.default_sample_set_membership
-
-    @property
-    def n_sample_sets(self):
-        """Return sample sets size, including the default set."""
-        return len(self.sample_set_names)
-
-    @property
-    def n_user_sample_sets(self):
-        """Return user sample sets size for the current selection"""
-        return len(self.user_sample_set_names)
-
-    @property
-    def n_user_sample_sets_all(self):
-        """Return user sample sets size for entire dataset"""
-        return len(self.user_sample_set_names_all)
-
-    @property
-    def user_sample_set_names(self) -> list[str]:
-        """Return user sample set names with selected member"""
-        grouping = self.datastore._sample_set_grouping
-        if grouping is None:
-            return []
-        present = grouping.values[self._sample_selected].any(axis=0)
-        return [
-            s
-            for s, p in zip(grouping["sample_set"].values.tolist(), present)
-            if p and s != self.default_sample_set_name
-        ]
-
-    @property
-    def user_sample_set_names_all(self) -> list[str]:
-        return self.datastore.user_sample_set_names
-
-    @property
-    def sample_set_names(self) -> list[str]:
-        return [self.default_sample_set_name, *self.user_sample_set_names]
-
-    @property
-    def sample_set_names_all(self) -> list[str]:
-        return self.datastore.sample_set_names
-
-    @property
-    def default_sample_set_name(self) -> str:
-        return self.datastore.default_sample_set_name
-
-    @property
-    def has_sample_sets(self):
-        """Return True if there are any sample sets other than the default set."""
-        return self.datastore.has_sample_sets
-
-    def sample_set_membership_dataframe(self, *, active_only=False) -> pd.DataFrame:
-        """Long-form (sample_set, sample, active) table, one row per membership"""
-        grouping = self.datastore._sample_set_grouping  # SHIM REFACTOR(samples)
-        if grouping is None:
-            df = pd.DataFrame(
-                {"sample_set": self.default_sample_set_name, "sample": self.samples_all}
-            )
-        else:
-            member = grouping.rename("member").to_series()
-            df = member[member].reset_index()[["sample_set", "sample"]]
-        df = df.assign(active=df["sample"].isin(self.samples))
-        return df[df.active] if active_only else df
-
-    def sample_set_summary(self) -> pd.DataFrame:
-        return (
-            self.sample_set_membership_dataframe()
-            .groupby("sample_set")
-            .agg({"active": "sum", "sample": "count"})
-            .rename({"active": "Active", "sample": "Total"}, axis=1)
-        )
+        return track.resolve_columns(self.column)
