@@ -13,7 +13,7 @@ import pandas as pd
 import param
 
 from pbview import config
-from pbview.model.coordinates import Coordinates
+from pbview.model.coordinates import ColumnSelection, Coordinates
 
 
 class SelectionStateBase(param.Parameterized):
@@ -29,13 +29,12 @@ class SelectionStateBase(param.Parameterized):
     upper = param.Number(
         default=float("inf"), doc="Maximum contig length (inf = no limit)"
     )
+    samples = param.ListSelector(default=[], objects=[])
+    contigs = param.ListSelector(default=[], objects=[])
     missing_cutoff = param.Selector(
         default=None,
         doc="An sample site is considered missing if the coverage <= this value",
     )
-
-    samples = param.ListSelector(default=[], objects=[])
-    contigs = param.ListSelector(default=[], objects=[])
 
     # Track-related parameters
     active_track = param.Selector(default=None, objects=[])
@@ -66,26 +65,36 @@ class SelectionStateBase(param.Parameterized):
             self.coord.reset(),
             self.lower,
             self.upper,
-            tuple(self.samples),
-            tuple(self.contigs),
+            columns=(ColumnSelection("sample", tuple(map(str, self.samples)) or None),),
+            contigs=tuple(
+                map(str, self.contigs),
+            ),
         )
 
     @staticmethod
     @lru_cache(maxsize=32)
     def _filtered(
-        base: Coordinates,
+        coords: Coordinates,
         lower: int,
         upper: float,
-        samples: tuple[str, ...],
+        columns: tuple[ColumnSelection, ...],
         contigs: tuple[str, ...],
     ) -> Coordinates:
-        genome = base.datastore.genome  # SHIM: remove with Coordinates.datastore
+        genome = coords.datastore.genome  # SHIM REFACTOR(datastore): pass genome in
         keep = genome.contigs_in_length_range(lower, upper, contigs=contigs or None)
-        return base.with_samples(samples=samples or None).with_contigs(keep)
+        for sel in columns:
+            coords = coords.with_columns(sel)
+        return coords.with_contigs(keep)
 
     def _current(self) -> Coordinates:
         return self._filtered(
-            self.coord, self.lower, self.upper, tuple(self.samples), tuple(self.contigs)
+            self.coord,
+            lower=self.lower,
+            upper=self.upper,
+            columns=(ColumnSelection("sample", tuple(map(str, self.samples)) or None),),
+            contigs=tuple(
+                map(str, self.contigs),
+            ),
         )
 
     @param.depends("lower", "upper", "contigs", watch=True)

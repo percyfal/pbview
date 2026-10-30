@@ -449,3 +449,8 @@ def test_coordinates_resolve_for_contigs(contigs, expected, coords, genome):
     track.column_dim = "sample"
     results = coords.with_contigs(contigs).resolve_for(track, genome)
     assert results.intervals.intervals == expected
+
+
+def test_with_columns_none_clears(coords):
+    c = coords.with_columns(ColumnSelection("sample", ("s1",)))
+    assert c.with_columns(ColumnSelection("sample", None)) == coords.reset()

@@ -187,7 +187,7 @@ def attach_default_sample_set(
     return tree
 
 
-def tiny_datatree(track_name: str = "depth") -> xr.DataTree:
+def tiny_datatree(track_name: str = "depth", contigs=None) -> xr.DataTree:
     """Create a tiny datatree for testing."""
     values = np.array(
         [
@@ -215,7 +215,11 @@ def tiny_datatree(track_name: str = "depth") -> xr.DataTree:
         ]
     )
 
-    contigs = np.array(["chr1", "chr2", "chr10"])
+    contigs = (
+        np.array(contigs)
+        if contigs is not None
+        else np.array(["chr1", "chr2", "chr10"])
+    )
     offsets = np.array([0, 10, 18, 24])
     samples = np.array(["s1", "s2", "s3", "s4", "s5", "s6", "s7"])
     dt = make_pbzarr_datatree(
