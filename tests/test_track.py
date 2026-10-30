@@ -3,7 +3,9 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from pbview import config
 from pbview.model.coordinates import ColumnSelection, Coordinates, PositionIntervals
+from pbview.model.grouping import IDENTITY_DIM, ensure_all_set
 from pbview.model.track import Track, _isel_intervals, resolve_columns
 
 N = 24
@@ -123,11 +125,12 @@ def test_contig_mean_sum_coverage(track):
 
 
 def test_from_tree_finds_meta(sample_sets):
-    ss = xr.Dataset({"sample_set_membership": sample_sets})
+    ss = xr.Dataset({"sample_set_membership": ensure_all_set(sample_sets)})
     depth = xr.Dataset(
         {"depth": (("position", "sample"), np.zeros((24, 7), dtype=np.uint32))},
         coords={"sample": ["s1", "s2", "s3", "s4", "s5", "s6", "s7"]},
     )
+
     raw = xr.DataTree.from_dict(
         {
             "/depth": depth,
@@ -135,7 +138,7 @@ def test_from_tree_finds_meta(sample_sets):
         }
     )
     track = Track.from_tree(name="depth", data=raw["depth"], raw=raw)
-    assert list(track.groupings.keys()) == ["sample_set"]
+    assert list(track.groupings.keys()) == ["identity", "sample_set"]
     da = track.groupings["sample_set"]
     assert da.name == "sample_set_membership"
     assert da.dims == ("sample", "sample_set")
@@ -383,3 +386,15 @@ def test_resolve_columns_sample_and_sample_set_selection(sels, expected, tiny_gr
 def test_track_resolve_columns_delegation(track, sels, expected):
     result = track.resolve_columns(sels)
     assert result == expected
+
+
+def test_all_set_is_identity(track):
+    sel = ColumnSelection("sample_set", ("ALL",))
+    assert track.resolve_columns((sel,)) == tuple(track.columns)
+
+
+@pytest.mark.parametrize("name", ["depth", "depth_sum", "depth_missing_cutoff=3"])
+def test_identity_selects_everything(full_ds, name):
+    track = full_ds.tracks[name]
+    sel = ColumnSelection(IDENTITY_DIM, (config.DEFAULT_GROUPING_SET,))
+    assert track.resolve_columns((sel,)) == tuple(track.columns)
