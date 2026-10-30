@@ -23,7 +23,7 @@ import zarr
 
 from pbview import config
 from pbview.logging import app_logger as logger
-from pbview.model.coordinates import Coordinates, Genome
+from pbview.model.coordinates import Genome
 from pbview.model.grouping import grouping_hash
 from pbview.model.track import Summaries, Track, find_summaries
 
@@ -119,7 +119,6 @@ class DataStore:
             )
             for n in names
         }
-        self.base_coord = Coordinates(self)
 
     def __repr__(self) -> str:
         return f"<DataStore(path={self._path}, tracks={self.tracks}, id={self.id[:8]})>"

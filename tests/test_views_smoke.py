@@ -41,7 +41,7 @@ def test_summary_page(dsv):
 
 
 def test_selection_overview(full_ds):
-    coords = Coordinates(full_ds).with_contigs(["chr1"]).with_sample_sets(["pop1"])
+    coords = Coordinates().with_contigs(["chr1"]).with_sample_sets(["pop1"])
     df = selection_overview(coords, full_ds.genome, full_ds.tracks["depth"])
     assert df.index.names == ["Type", "Label"]
     assert list(df.columns) == ["Active", "Total"]

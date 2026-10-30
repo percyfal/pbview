@@ -58,8 +58,8 @@ def track(full_ds):
 
 
 @pytest.fixture()
-def coord(full_ds):
-    return Coordinates(full_ds)
+def coord():
+    return Coordinates()
 
 
 @pytest.fixture()
@@ -486,7 +486,7 @@ def test_n_selected_empty_selection(track, coord):
 
 def test_missing_grouping_raises_for_projection(raw_ds):
     track = raw_ds.tracks["depth"]
-    coord = Coordinates(raw_ds)
+    coord = Coordinates()
     assert track.n_selected(coord.with_sample_sets(["ALL"]).column) == 7
     with pytest.raises(ValueError, match="no 'sample_set' grouping"):
         track.n_selected(coord.with_sample_sets(["pop1"]).column)

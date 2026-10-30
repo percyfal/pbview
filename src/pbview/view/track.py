@@ -104,7 +104,7 @@ class TrackIndicatorCoverageTable(TrackIndicatorTableBase):
             stats = hist_stats(counts, bins)
             included_coverage = (bins >= lo / n) & (bins <= up / n)
             accessible = int(counts[included_coverage].sum())
-            genome = coord.datastore.genome  # SHIM: remove with Coordinates.datastore
+            genome = self.state.datastore.genome
             rows.append(
                 {
                     "sample_set": s,
@@ -158,7 +158,7 @@ class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
             n_samples = track.n_selected(coord.with_sample_sets([s]).column)
             included_missing = bins <= max_missing_samples
             accessible = int(counts[included_missing].sum())
-            genome = coord.datastore.genome  # SHIM: remove with Coordinates.datastore
+            genome = self.state.datastore.genome
             rows.append(
                 {
                     "sample_set": s,

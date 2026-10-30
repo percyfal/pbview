@@ -153,16 +153,16 @@ Remove `Coordinates.datastore`.
 
 - [x] `Track.coverage_hist` / `missingness_hist` take a
       `ResolvedSelection` instead of a `Coordinates`
-- [ ] `reset()` -> `Coordinates()`
-- [ ] `ds.base_coord` → `Coordinates()` (many call sites; mechanical).
-- [ ] `genome` / `coords` fixtures become literals.
-- [ ] Delete custom `__hash__` / `__eq__` / `_key()`; rely on frozen
+- [x] `reset()` -> `Coordinates()`
+- [x] `ds.base_coord` → `Coordinates()` (many call sites; mechanical).
+- [x] `genome` / `coords` fixtures become literals.
+- [x] Delete custom `__hash__` / `__eq__` / `_key()`; rely on frozen
   dataclass.
 - [ ] Delete `pbview/_compat.py` and any `filterwarnings` entry in the
   same commit as the last shim.
 - [ ] Move durable decisions to docstrings / docs/design.md; delete
   REFACTOR.md.
-- [ ] Check that `Genome` is hashable for the `lru_cache` function
+- [x] Check that `Genome` is hashable for the `lru_cache` function
       `SelectionStateBase._filtered`; if `Genome` holds numpy arrays a
       custom `__hash__` function is needed
 - [x] DataStore takes sample sets from the track groupings. After that

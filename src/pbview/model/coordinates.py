@@ -9,17 +9,15 @@ __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from functools import cached_property
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 import numpy as np
-import numpy.typing as npt
 import xarray as xr
 
 if TYPE_CHECKING:
-    from .datastore import DataStore
     from .track import Track
 
 from pbview import config
@@ -291,10 +289,6 @@ class Coordinates:
     against their universes, `Genome` and `Track`, never here.
     """
 
-    # FIXME: new conversation emphasizes that Coordinates should *not*
-    # hold a referenc to the datastore; this breaks meaningful == and
-    # hashing, and every with_* carries I/O state,
-    datastore: DataStore = field(repr=False, compare=False)  # SHIM: remove
     spatial: SpatialSelection = SpatialSelection()
     column: tuple[ColumnSelection, ...] = ()
 
@@ -303,21 +297,6 @@ class Coordinates:
         dims = [c.column_dim for c in self.column]
         if len(dims) != len(set(dims)):
             raise ValueError(f"duplicate column dims: {dims}")
-
-    def _key(self) -> tuple:
-        return (
-            self.datastore.id,  # SHIM: remove with datastore
-            self.spatial,  # final
-            self.column,  # final
-        )
-
-    def __hash__(self) -> int:
-        return hash(self._key())
-
-    def __eq__(self, other):
-        if not isinstance(other, Coordinates):
-            return NotImplemented
-        return self._key() == other._key()
 
     def column_for(self, dim: str) -> ColumnSelection:
         """Return column selection for dim"""
@@ -379,17 +358,6 @@ class Coordinates:
         if labels is not None and config.DEFAULT_GROUPING_SET in labels:
             labels = None
         return self.with_columns(ColumnSelection("sample_set", labels))
-
-    def reset(self) -> "Coordinates":
-        """Return Coordinates with no selections (all contigs, all columns)."""
-        return type(self)(
-            datastore=self.datastore
-        )  # SHIM: becomes Coordinates() in (6.)
-
-    @property
-    def offsets(self) -> npt.NDArray:
-        """Contig offsets"""
-        return self.datastore.offsets
 
     def selected_contigs(self, genome: Genome) -> tuple[str, ...]:
         """Currently selected contigs"""

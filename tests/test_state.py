@@ -19,8 +19,8 @@ def genome():
 
 
 @pytest.fixture()
-def coords(raw_ds):
-    return Coordinates(raw_ds)
+def coords():
+    return Coordinates()
 
 
 @pytest.fixture()
@@ -39,7 +39,7 @@ def defaults():
 
 @pytest.fixture()
 def state(full_ds, defaults):
-    coord = Coordinates(full_ds)
+    coord = Coordinates()
     # full_ds.missing_cutoffs = [3]  # FIXME: Hack to avoid missing_cutoffs
     cls = make_selection_state_class(full_ds.tracks["depth"], coord, defaults=defaults)
     return cls(datastore=full_ds)
@@ -121,7 +121,7 @@ def test_contigs_and_length_filters(state, args, expected):
     pi = state.datastore.genome.resolve(state.coord.spatial)
     assert pi.n_positions == expected["genome_size"]
     assert (
-        len(state.coord.datastore.genome.resolve_contigs(state.coord.spatial))
+        len(state.datastore.genome.resolve_contigs(state.coord.spatial))
         == expected["n_contigs"]
     )
 
@@ -136,12 +136,18 @@ def test_filter_nothing_passes_is_empty(state):
     assert state._current().spatial == SpatialSelection(())
 
 
-def test_filtered_applies_columns(coords):
+def test_filtered_applies_columns(coords, genome):
     sel = ColumnSelection("sample", ("s1",))
-    c = SelectionStateBase._filtered(coords, 0, float("inf"), (sel,), ())
+    c = SelectionStateBase._filtered(coords, genome, 0, float("inf"), (sel,), ())
     assert c.column == (sel,)
 
 
 def test_state_requires_summaries(raw_ds):
     with pytest.raises(ValueError, match="pbview preprocess"):
         SelectionStateBase(datastore=raw_ds)
+
+
+def test_filtered_is_cached_per_genome(state):
+    genome = state.datastore.genome
+    args = (Coordinates(), genome, 0, float("inf"), (), ())
+    assert SelectionStateBase._filtered(*args) is SelectionStateBase._filtered(*args)

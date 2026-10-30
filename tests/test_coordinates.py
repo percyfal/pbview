@@ -33,8 +33,8 @@ def genome():
 
 
 @pytest.fixture
-def coords(raw_ds):
-    return Coordinates(raw_ds)
+def coords():
+    return Coordinates()
 
 
 @pytest.mark.parametrize(
@@ -193,12 +193,11 @@ def test_column_selection_selected(data):
     assert ret.coords["sample"].values.tolist() == ["s1", "s3"]
 
 
-def test_coordinates_init_with_column_selection(make_datastore):
-    ds = make_datastore(sample_sets=_helpers.sample_sets())
+def test_coordinates_init_with_column_selection():
     with pytest.raises(TypeError):
-        Coordinates(ds, (), ColumnSelection())
+        Coordinates(column=ColumnSelection("sample"))  # not a sequence of selections
     with pytest.raises(ValueError):
-        Coordinates(ds, (), [ColumnSelection("sample"), ColumnSelection("sample")])
+        Coordinates(column=[ColumnSelection("sample"), ColumnSelection("sample")])
 
 
 def test_coordinates_with_contigs(coords, genome):
@@ -284,19 +283,25 @@ def test_with_sample_sets_default_resets(coords):
     assert sel.with_sample_sets(None) == coords
 
 
-def test_reset_clears_contigs(coords, genome):
-    assert (
-        coords.with_contigs(("chr1",)).reset().selected_contigs(genome)
-        == genome.contigs
-    )
+def test_default_coordinates_select_everything(genome):
+    c = Coordinates()
+    assert c.spatial == SpatialSelection()
+    assert c.column == ()
+    assert c.selected_contigs(genome) == genome.contigs
 
 
-def test_reset_from_empty_selection(coords, genome):
-    assert coords.with_contigs(()).reset().selected_contigs(genome) == genome.contigs
+def test_coordinates_is_a_pure_value():
+    a = Coordinates().with_contigs(("chr1",)).with_sample_sets(["pop1"])
+    b = Coordinates().with_sample_sets(["pop1"]).with_contigs(("chr1",))
+    assert a == b
+    assert hash(a) == hash(b)
 
 
-def test_reset_is_default(coords):
-    assert coords.with_contigs(("chr1",)).reset().spatial == SpatialSelection()
+def test_genome_is_hashable(genome):
+    same = Genome(contigs=genome.contigs, offsets=genome.offsets)
+    assert genome == same
+    assert hash(genome) == hash(same)
+    assert genome != Genome(contigs=("a",), offsets=(0, 5))
 
 
 def test_hash_follows_column_selection(coords):
@@ -375,7 +380,7 @@ def test_coordinates_resolve_for_contigs(contigs, expected, coords, genome):
 
 def test_with_columns_none_clears(coords):
     c = coords.with_columns(ColumnSelection("sample", ("s1",)))
-    assert c.with_columns(ColumnSelection("sample", None)) == coords.reset()
+    assert c.with_columns(ColumnSelection("sample", None)) == Coordinates()
 
 
 def test_with_samples_replaces_earlier_selection(coords):
@@ -390,7 +395,7 @@ def test_sample_selections_are_part_of_the_key(coords):
 
 
 def test_selected_columns(full_ds):
-    coords = Coordinates(full_ds)
+    coords = Coordinates()
     track = full_ds.tracks["depth"]
     assert coords.selected_columns(track) == tuple(track.columns)
     assert coords.with_sample_sets(["pop2"]).selected_columns(track) == ("s4", "s5")
