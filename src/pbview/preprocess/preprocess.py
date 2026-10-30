@@ -105,10 +105,11 @@ def compute_thresholds(
     # the defaults for maxbins
     rows = []
     with show_progress:
-        for ss in ds.sample_set_names:
+        for ss in track.groups("sample_set"):
             # FIXME: Add option to choose by sample stats
             by_sample = False
-            n = coord.with_sample_sets([ss]).n_samples if by_sample else 1
+            n_samples = track.n_selected(coord.with_sample_sets([ss]).column)
+            n = n_samples if by_sample else 1
             maxbins = defaults[f"maxbins_{ss}"]
             bins = np.arange(maxbins + 1)
 
@@ -124,9 +125,9 @@ def compute_thresholds(
                 {
                     "sample_set": ss,
                     "lower": lo,
-                    "lower_by_sample": lo / coord.with_sample_sets([ss]).n_samples,
+                    "lower_by_sample": lo / n_samples,
                     "upper": up,
-                    "upper_by_sample": up / coord.with_sample_sets([ss]).n_samples,
+                    "upper_by_sample": up / n_samples,
                     "accessible_bp": accessible,
                     "frac_active_genome": accessible / genome.size,
                     "frac_full_genome": accessible / genome.size,

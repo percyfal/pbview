@@ -46,7 +46,9 @@ class DataStoreView(Viewer):
                 state=self.state,
                 maxbins_default={
                     s: defaults[f"maxbins_{s}"]
-                    for s in self.state.coord.sample_set_names
+                    for s in self.state.track().groups(
+                        "sample_set", self.state.coord.column
+                    )
                 },
             ),
             "Missingness": TrackMissingnessPage(

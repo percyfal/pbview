@@ -397,3 +397,48 @@ def test_identity_selects_everything(full_ds, name):
     track = full_ds.tracks[name]
     sel = ColumnSelection(IDENTITY_DIM, (config.DEFAULT_GROUPING_SET,))
     assert track.resolve_columns((sel,)) == tuple(track.columns)
+
+
+@pytest.mark.parametrize(
+    "sets,expected",
+    [(["pop1"], 3), (["pop1", "pop3"], 5), (["ALL"], 7), (None, 7)],
+)
+def test_n_selected_by_sample_sets(track, coord, sets, expected):
+    assert track.n_selected(coord.with_sample_sets(sets).column) == expected
+
+
+def test_n_selected_unknown_set_raises(track, coord):
+    with pytest.raises(ValueError, match="unknown sample_set labels"):
+        track.n_selected(coord.with_sample_sets(["pop0"]).column)
+
+
+def test_n_selected_intersects_dims(track, coord):
+    both = coord.with_samples(["s1", "s2"])
+    assert track.n_selected(both.with_sample_sets(["pop2"]).column) == 0
+    assert track.n_selected(both.with_sample_sets(["pop1"]).column) == 2
+
+
+def test_groups(track, coord):
+    assert track.groups() == ("ALL", "pop1", "pop2", "pop3")
+    pop2 = coord.with_sample_sets(["pop2"]).column
+    assert track.groups("sample_set", pop2) == ("ALL", "pop2")
+
+
+def test_groups_without_sets_fall_back_to_identity(raw_ds):
+    assert raw_ds.tracks["depth"].groups() == ("ALL",)
+
+
+def test_matching_group(track, coord):
+    assert track.matching_group(()) == "ALL"
+    assert track.matching_group(coord.with_sample_sets(["pop2"]).column) == "pop2"
+    assert track.matching_group(coord.with_samples(["s4", "s5"]).column) == "pop2"
+    assert track.matching_group(coord.with_samples(["s1"]).column) is None
+
+
+def test_overlapping_sets_on_track(make_datastore, sample_sets):
+    ss = sample_sets.copy(deep=True)
+    ss[0, 1] = True  # s1 in pop1 and pop2
+    track = make_datastore(sample_sets=ss).tracks["depth"]
+    sel = (ColumnSelection("sample_set", ("pop2",)),)
+    assert track.resolve_columns(sel) == ("s1", "s4", "s5")
+    assert track.groups("sample_set", sel) == ("ALL", "pop1", "pop2")

@@ -62,9 +62,9 @@ def test_missing_field_raises(sample_profile):
         ThresholdProfile.from_yaml(yaml.safe_dump(data))
 
 
-class _Coordinates:
-    def __init__(self):
-        self.sample_set_names_all = ["ALL", "set_A"]
+class _Track:
+    def groups(self, dim="sample_set", selections=()):
+        return ("ALL", "set_A")
 
 
 class _FakeState:
@@ -78,7 +78,9 @@ class _FakeState:
         self.upper_coverage_ALL = 500
         self.lower_coverage_set_A = 4
         self.upper_coverage_set_A = 200
-        self.coord = _Coordinates()
+
+    def track(self):
+        return _Track()
 
 
 def test_profile_from_state_builds_correct_profile():

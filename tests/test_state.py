@@ -41,7 +41,7 @@ def defaults():
 def state(full_ds, defaults):
     coord = Coordinates(full_ds)
     # full_ds.missing_cutoffs = [3]  # FIXME: Hack to avoid missing_cutoffs
-    cls = make_selection_state_class(coord, defaults=defaults)
+    cls = make_selection_state_class(full_ds.tracks["depth"], coord, defaults=defaults)
     return cls(datastore=full_ds)
 
 

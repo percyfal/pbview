@@ -81,3 +81,13 @@ def test_preprocess_without_sampleset_info_uses_identity(make_datastore_path):
     summary = DataStore(path).tracks["depth_sum"]
     assert summary.column_dim == IDENTITY_DIM
     assert summary.columns == ["ALL"]
+
+
+def test_compute_thresholds_runs(make_datastore_path, sample_sets, capsys):
+    path = make_datastore_path(
+        with_sum=True, with_missing=True, sample_sets=sample_sets
+    )
+    preprocess_mod.compute_thresholds(path, progress=False)
+    out = capsys.readouterr().out
+    for name in ("ALL", "pop1", "pop2", "pop3"):
+        assert name in out

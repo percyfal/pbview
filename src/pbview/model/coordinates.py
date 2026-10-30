@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from .datastore import DataStore
     from .track import Track
 
+from pbview import config
 from pbview._compat import _warn_shim
 from pbview.model.grouping import IDENTITY_DIM
 
@@ -431,7 +432,7 @@ class Coordinates:
         selection is resolved.
         """
         labels = None if sample_sets is None else tuple(sample_sets)
-        if labels is not None and self.default_sample_set_name in labels:
+        if labels is not None and config.DEFAULT_GROUPING_SET in labels:
             labels = None
         return self.with_columns(ColumnSelection("sample_set", labels))
 

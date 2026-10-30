@@ -91,10 +91,10 @@ class PrecomputedTrack:
             approx_max = max_coverage_bin
         return da.bincount(sums, minlength=approx_max + 1).compute()
 
-    def sum_hist(self, sample_set: str, coord: Coordinates) -> np.ndarray:
+    def sum_hist(self, sample_set: str, n_samples: int) -> np.ndarray:
         if sample_set not in self._local_cache:
             max_coverage_bin = min(
-                coord.n_samples * config.MAX_COVERAGE_PER_SAMPLE,
+                n_samples * config.MAX_COVERAGE_PER_SAMPLE,
                 config.MAX_COVERAGE_BIN,
             )
             self._local_cache[sample_set] = self._sum_hist_cached(
@@ -230,6 +230,52 @@ class Track:
             selections, self.column_dim, self.columns, self.groupings
         )
 
+    def n_selected(self, selections: Iterable[ColumnSelection]) -> int:
+        """Number of columns selected by `selections`."""
+        return len(self.resolve_columns(selections))
+
+    def _grouping_for(self, dim: str) -> xr.DataArray | None:
+        grouping = self.groupings.get(dim)
+        return grouping if grouping is not None else self.groupings.get(IDENTITY_DIM)
+
+    def groups(
+        self, dim: str = "sample_set", selections: Iterable[ColumnSelection] = ()
+    ) -> tuple[str, ...]:
+        """Groups of `dim` with a member among the columns selected by `selections`.
+
+        Falls back to the identity grouping when the track has no
+        grouping for `dim`. The default set is always listed first.
+        """
+        default = config.DEFAULT_GROUPING_SET
+        grouping = self._grouping_for(dim)
+        if grouping is None:  # a summary of the identity: its columns are the set
+            return (default,)
+        group_dim = grouping.dims[1]
+        selected = np.isin(
+            grouping[self.column_dim].values, self.resolve_columns(selections)
+        )
+        present = grouping.values[selected].any(axis=0)
+        names = grouping[group_dim].values.tolist()
+        return (default, *(n for n, p in zip(names, present) if p and n != default))
+
+    def matching_group(
+        self, selections: Iterable[ColumnSelection], dim: str = "sample_set"
+    ) -> str | None:
+        """Name of the group of `dim` whose members equal the selected columns."""
+        selected = set(self.resolve_columns(selections))
+        grouping = self._grouping_for(dim)
+        if grouping is None:
+            return (
+                config.DEFAULT_GROUPING_SET if selected == set(self.columns) else None
+            )
+        group_dim = grouping.dims[1]
+        columns = grouping[self.column_dim].values
+        for name in self.groups(dim, selections):
+            members = columns[grouping.sel({group_dim: name}).values]
+            if set(members.tolist()) == selected:
+                return name
+        return None
+
     @property
     def column_dim(self) -> str:
         """Return the name of the column dimension."""
@@ -263,8 +309,8 @@ class Track:
         return _isel_intervals(res, intervals)
 
     def _select(self, base: xr.DataArray, coord: Coordinates) -> xr.DataArray:
-        """Apply a sample + position selection"""
-        res = base.sel(sample=coord.samples)
+        """Apply a column + position selection"""
+        res = base.sel({self.column_dim: list(self.resolve_columns(coord.column))})
         return self._select_positions(res, coord)
 
     def data(self, coord: Coordinates) -> xr.DataArray:
@@ -292,7 +338,7 @@ class Track:
         logger.info("Calculating histogram of coverage for '%s' track", self.name)
         logger.debug("Current selection: %s", coord)
         bins = np.asarray(bins)
-        name = coord.matching_sample_set()
+        name = self.matching_group(coord.column)
         if name is not None and self._pre.sum is not None:
             sums = select_set(
                 self._select_positions(self._pre.sum["values"], coord), name
@@ -331,7 +377,7 @@ class Track:
         logger.info("Calculating missingness histogram for '%s' track", self.name)
         logger.debug("Current selection: %s", coord)
         bins = np.asarray(bins)
-        name = coord.matching_sample_set()
+        name = self.matching_group(coord.column)
 
         if (
             name is not None
@@ -370,7 +416,7 @@ class Track:
         Returns:
             Histogram, bins as a numpy arrays
         """
-        bins = np.arange(0, coord.n_samples + 1)
+        bins = np.arange(0, self.n_selected(coord.column) + 1)
         return self._missingness_hist_cached(
             tuple(bins.tolist()), coord, missing_cutoff
         )
