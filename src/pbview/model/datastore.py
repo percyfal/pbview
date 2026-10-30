@@ -185,7 +185,7 @@ class DataStore:
     def _sample_set_grouping(self) -> xr.DataArray | None:
         """Store `sample_set` grouping of the base track, if any.
 
-        SHIM REFACTOR(samples): store-level view of the sample sets;
+        SHIM REFACTOR(datastore): store-level view of the sample sets;
         goes away when Coordinates resolves sets through the tracks
         """
         return self.tracks[self._active_track].groupings.get("sample_set")

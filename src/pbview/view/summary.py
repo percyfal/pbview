@@ -136,15 +136,16 @@ class SummaryPage(pn.viewable.Viewer):
             + 0.3
         )
         dflist = []
-        for s in coord.sample_set_names:
+        for s in self.track.groups("sample_set", coord.column):
             means = self.track._pre.contig_mean_coverage(s)
+            n_samples = self.track.n_selected(coord.with_sample_sets([s]).column)
             dflist.append(
                 pd.DataFrame(
                     {
                         "sample_set": s,
                         "contig": names,
                         "length": lengths,
-                        "mean": means / coord.with_sample_sets([s]).n_samples,
+                        "mean": means / n_samples,
                         "selected": selected,
                         "total_mean": means,
                     }

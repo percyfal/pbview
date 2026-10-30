@@ -66,7 +66,7 @@ class ThresholdProfile:
 def profile_from_state(state, datastore_id: str) -> ThresholdProfile:
     """Build a ThresholdProfile from a SelectionState instance."""
     sample_sets = {}
-    for s in state.coord.sample_set_names_all:
+    for s in state.track().groups("sample_set"):
         sample_sets[s] = SampleSetThresholds(
             missing_cutoff=int(getattr(state, "missing_cutoff")),
             lower_coverage=int(getattr(state, f"lower_coverage_{s}")),

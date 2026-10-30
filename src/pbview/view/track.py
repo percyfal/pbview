@@ -94,9 +94,11 @@ class TrackIndicatorCoverageTable(TrackIndicatorTableBase):
         thresh = args[n + 1 : -1]
         by_sample = args[-1]
 
+        track = self.state.track()
         rows = []
         for i, s in enumerate(self.hist_rxs):
-            n = coord.with_sample_sets([s]).n_samples if by_sample else 1
+            n_samples = track.n_selected(coord.with_sample_sets([s]).column)
+            n = n_samples if by_sample else 1
             counts, bins = hists[i]
             lo, up = thresh[2 * i], thresh[2 * i + 1]
             stats = hist_stats(counts, bins)
@@ -107,9 +109,9 @@ class TrackIndicatorCoverageTable(TrackIndicatorTableBase):
                 {
                     "sample_set": s,
                     "lower": lo,
-                    "lower_by_sample": lo / coord.with_sample_sets([s]).n_samples,
+                    "lower_by_sample": lo / n_samples,
                     "upper": up,
-                    "upper_by_sample": up / coord.with_sample_sets([s]).n_samples,
+                    "upper_by_sample": up / n_samples,
                     "accessible_bp": accessible,
                     "frac_active_genome": accessible / genome.size,
                     "frac_full_genome": accessible / genome.size,
@@ -148,10 +150,12 @@ class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
         coord = args[n]
         miss = args[n + 1 :]
 
+        track = self.state.track()
         rows = []
         for i, s in enumerate(self.hist_rxs):
             counts, bins = hists[i]
             max_missing_samples = miss[i]
+            n_samples = track.n_selected(coord.with_sample_sets([s]).column)
             included_missing = bins <= max_missing_samples
             accessible = int(counts[included_missing].sum())
             genome = coord.datastore.genome  # SHIM: remove with Coordinates.datastore
@@ -159,8 +163,7 @@ class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
                 {
                     "sample_set": s,
                     "max_missing_samples": max_missing_samples,
-                    "max_missing_samples_by_sample": max_missing_samples
-                    / coord.with_sample_sets([s]).n_samples,
+                    "max_missing_samples_by_sample": max_missing_samples / n_samples,
                     "accessible_bp": accessible,
                     "frac_active_genome": accessible / genome.size,
                     "frac_full_genome": accessible / genome.size,
@@ -196,6 +199,10 @@ class _TrackPlotView(TrackView, param.ParameterizedABC):
     def coord(self):
         return self.state.coord.with_sample_sets(sample_sets=[self.sample_set])
 
+    @property
+    def n_samples(self) -> int:
+        return self.track.n_selected(self.coord.column)
+
 
 class TrackCoverageView(_TrackPlotView):
     def __init__(self, page, hist_rx, **params):
@@ -207,7 +214,7 @@ class TrackCoverageView(_TrackPlotView):
         self.plot = pn.bind(self._plot, self._hist_rx, lo, hi, page.param.by_sample)
 
     def _plot(self, hist_data, lower, upper, by_sample):
-        n = self.coord.n_samples if by_sample else 1
+        n = self.n_samples if by_sample else 1
         counts, bins = hist_data
         df = pd.DataFrame({"coverage": bins, "count": counts})
         scatter = df.hvplot.scatter(x="coverage", y="count").opts(shared_axes=False)
@@ -229,7 +236,7 @@ class TrackMissingnessView(_TrackPlotView):
         super().__init__(**params)
         self._hist_rx = hist_rx
         max_missing_samples = self.state.param[f"max_missing_samples_{self.sample_set}"]
-        self.maxbins = self.state.coord.n_samples
+        self.maxbins = self.track.n_selected(self.state.coord.column)
 
         self.plot = pn.bind(self._plot, self._hist_rx, max_missing_samples)
 
@@ -263,14 +270,15 @@ class TrackCoveragePage(Viewer):
 
     def __init__(self, **params):
         super().__init__(**params)
-        self.param.active_sets.objects = self.state.coord.sample_set_names
-        self.active_sets = list(self.state.coord.sample_set_names)
+        self._names = self.track.groups("sample_set", self.state.coord.column)
+        self.param.active_sets.objects = list(self._names)
+        self.active_sets = list(self._names)
 
         self._hist_rx = {
             s: pn.rx(self._compute_hist)(
                 self.maxbins_default[s], self.state.param.coord, s, self.param.by_sample
             )
-            for s in self.state.coord.sample_set_names
+            for s in self._names
         }
         self._boxplot = pn.bind(
             self._make_boxplot,
@@ -288,7 +296,7 @@ class TrackCoveragePage(Viewer):
                 maxbins=self.maxbins,
                 by_sample=self.by_sample,
             )
-            for s in self.state.coord.sample_set_names
+            for s in self._names
         }
 
         self._table = TrackIndicatorCoverageTable(
@@ -313,7 +321,9 @@ class TrackCoveragePage(Viewer):
             bins=bins, coord=coord.with_sample_sets([sample_set])
         )
         if by_sample:
-            bins = bins / coord.with_sample_sets([sample_set]).n_samples
+            bins = bins / self.track.n_selected(
+                coord.with_sample_sets([sample_set]).column
+            )
         return counts, bins
 
     def _render_plots(self, active):
@@ -347,14 +357,15 @@ class TrackMissingnessPage(Viewer):
 
     def __init__(self, **params):
         super().__init__(**params)
-        self.param.active_sets.objects = self.state.coord.sample_set_names
-        self.active_sets = list(self.state.coord.sample_set_names)
-        self.maxbins = self.state.coord.n_samples
+        self._names = self.track.groups("sample_set", self.state.coord.column)
+        self.param.active_sets.objects = list(self._names)
+        self.active_sets = list(self._names)
+        self.maxbins = self.track.n_selected(self.state.coord.column)
         self._hist_rx = {
             s: pn.rx(self._compute_hist)(
                 self.state.param.coord, s, self.state.param.missing_cutoff
             )
-            for s in self.state.coord.sample_set_names
+            for s in self._names
         }
 
         self._plots = {
@@ -364,7 +375,7 @@ class TrackMissingnessPage(Viewer):
                 sample_set=s,
                 hist_rx=self._hist_rx[s],
             )
-            for s in self.state.coord.sample_set_names
+            for s in self._names
         }
 
         self._table = TrackIndicatorMissingnessTable(
