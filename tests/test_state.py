@@ -1,8 +1,13 @@
 import numpy as np
 import pytest
 
-from pbview.model.coordinates import Coordinates, Genome, SpatialSelection
-from pbview.model.selection import make_selection_state_class
+from pbview.model.coordinates import (
+    ColumnSelection,
+    Coordinates,
+    Genome,
+    SpatialSelection,
+)
+from pbview.model.selection import SelectionStateBase, make_selection_state_class
 
 
 @pytest.fixture()
@@ -11,6 +16,11 @@ def genome():
         contigs=["chr1", "chr2", "chr10"],
         offsets=[0, 10, 18, 24],
     )
+
+
+@pytest.fixture()
+def coords(raw_ds):
+    return Coordinates(raw_ds)
 
 
 @pytest.fixture()
@@ -124,3 +134,9 @@ def test_filter_with_empty_picker_applies_length(state):
 def test_filter_nothing_passes_is_empty(state):
     state.contigs, state.lower = [], 10**9
     assert state._current().spatial == SpatialSelection(())
+
+
+def test_filtered_applies_columns(coords):
+    sel = ColumnSelection("sample", ("s1",))
+    c = SelectionStateBase._filtered(coords, 0, float("inf"), (sel,), ())
+    assert c.column == (sel,)

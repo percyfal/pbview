@@ -141,11 +141,13 @@ class DataStore:
                 f"v{config.SCHEMA_VERSION}",
                 str(p),
                 str(stat.st_mtime_ns),
+                # FIXME: remove
                 self._sampleset_info_hash(),  # None or hash of sampleset_info content
             ]
         ).encode()
         return hashlib.blake2b(payload, digest_size=16).hexdigest()
 
+    # FIXME: sampleset information is store per track
     def _sampleset_info_hash(self) -> str:
         if not self._has_sampleset_info:
             return "no-sampleset_info"

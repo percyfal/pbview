@@ -403,6 +403,17 @@ class Coordinates:
             spatial=SpatialSelection(contigs),
         )
 
+    def with_columns(
+        self,
+        selection: ColumnSelection,
+    ) -> "Coordinates":
+        """Replace the selection for selection.column_dim"""
+        others = tuple(s for s in self.column if s.column_dim != selection.column_dim)
+        keep = others if selection.labels is None else others + (selection,)
+        return replace(
+            self, column=keep, _sample_selected=None
+        )  # SHIM REFACTOR(samples): drop _sample_selected
+
     def with_samples(
         self,
         samples: Iterable[str] | None = None,
@@ -430,7 +441,7 @@ class Coordinates:
         """Return Coordinates with no selections (all contigs, all columns)."""
         return type(self)(
             datastore=self.datastore
-        )  # SHIM: becomes Coordinates() in (f)
+        )  # SHIM: becomes Coordinates() in (6.)
 
     @property
     def samples_all(self) -> npt.NDArray:

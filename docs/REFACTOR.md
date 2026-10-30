@@ -80,13 +80,10 @@ tuple[ColumnSelection, ...]` resolved by the track.
       `_sync_sample_mask`)
 - [x] parity test (`# SHIM`); fix `sample_selected` warning text →
       `resolve_for(track, genome)`
-- [ ] migrate: `reset`, `_filtered` / `SelectionStateBase`, `_key()`
-      uses `column`, `Track._select` column half (bridge +
-      `_sel_columns`), `compute_track_sum` via `(coverage *
-      membership).sum("sample")`, `matching_sample_set` reads `column`
-- [ ] contract: delete mask, property, accessors (`samples_all`,
-      `n_samples*`, `sample_set_membership_all`, ...), `_replace`,
-      `"active": ...` dict builders, shim tests
+- [ ] migrate: `_filtered` / `SelectionStateBase`, `_key()` uses
+      `column`, `Track._select` column half (bridge + `_sel_columns`),
+      `compute_track_sum` via `(coverage * membership).sum("sample")`,
+      `matching_sample_set` reads `column`
 - [ ] grouping: `validate_grouping(s)`, `membership_from_sets`,
       `write_column_groupings`
 - [ ] layout: /{track}/_meta/groupings (Dataset, one var per group
@@ -95,6 +92,16 @@ tuple[ColumnSelection, ...]` resolved by the track.
       never read back
 - [ ] coordinates: `_legacy_grouping` (SHIM) reads
       `groupings["sample_set"]`; reject duplicate column dims
+- [ ] contract: delete mask, property, accessors (`samples_all`,
+      `n_samples*`, `sample_set_membership_all`, ...), `_replace`,
+      `"active": ...` dict builders, shim tests
+
+### 3b. fixtures: TODO
+
+- [ ] make use of `pbview.grouping.write_column_groupings` to write
+      sample sets
+- [ ] factor out redundant functions from fixtures (e.g., `_make`
+      functions in `conftest.py`
 
 ### 4. track-select: TODO
 
@@ -123,6 +130,7 @@ Remove `PrecomputedTrack`, `preprocess_data`, `Track._pre`.
 
 Remove `Coordinates.datastore`.
 
+- [ ] `reset()` -> `Coordinates()`
 - [ ] `ds.base_coord` → `Coordinates()` (many call sites; mechanical).
 - [ ] `genome` / `coords` fixtures become literals.
 - [ ] Delete custom `__hash__` / `__eq__` / `_key()`; rely on frozen
@@ -131,6 +139,9 @@ Remove `Coordinates.datastore`.
   same commit as the last shim.
 - [ ] Move durable decisions to docstrings / docs/design.md; delete
   REFACTOR.md.
+- [ ] Check that `Genome` is hashable for the `lru_cache` function
+      `SelectionStateBase._filtered`; if `Genome` holds numpy arrays a
+      custom `__hash__` function is needed
 
 ## Stubbed / known gaps (app)
 

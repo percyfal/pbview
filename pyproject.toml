@@ -148,8 +148,11 @@ cmd = "quarto publish gh-pages docs --no-browser"
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
-dev = { features = ["dev"], solve-group = "default" }
 quartodoc = { features = ["quartodoc"], solve-group = "default" }
+
+[tool.pixi.environments.dev]
+features = ["dev"]
+solve-group = "default"
 
 [tool.pixi.feature.dev.dependencies]
 basedpyright = "*"
