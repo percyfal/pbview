@@ -64,7 +64,7 @@ def test_default_coord(track, coord):
     assert track.name == "depth"
     data = track.data(coord.with_samples(None))
     assert data.sizes["position"] == 24
-    assert data.sizes["sample"] == 0  # FIXME: should be 7
+    assert data.sizes["sample"] == 7
     assert data.sizes["contig"] == 3
     assert data.sizes["contig_boundary"] == 4
 
@@ -103,7 +103,6 @@ def test_coverage_hist(contigs, expected, track, coord):
 
 
 @pytest.mark.parametrize("cutoff,expected", [(0, 3), (2, 3), (10, 3)])
-@pytest.mark.xfail(strict=False, reason="# REFACTOR: function returns one value?!?")
 def test_missingness_hist(cutoff, expected, track, coord):
     data, _ = track.missingness_hist(coord=coord, missing_cutoff=cutoff)
     assert data[-1] == expected
