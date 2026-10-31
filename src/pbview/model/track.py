@@ -150,6 +150,8 @@ class Track:
     def from_tree(
         cls, name: str, data: xr.DataTree, raw: xr.DataTree | None = None, **kwargs
     ) -> "Track":
+        if raw is None:
+            return cls(name, data, stored=None, **kwargs)
         node = raw.children.get(name)
         gnode = node.children.get("_meta", {}).get(GROUPING_NAME)
         groupings = tuple(gnode.dataset.data_vars.values()) if gnode is not None else ()
