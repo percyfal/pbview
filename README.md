@@ -171,15 +171,19 @@ satisfied, thresholds can be exported from the main page by pressing
 the `Export thresholds` button, which will produce a `yaml` file.
 
 (WIP) Alternatively, but not recommended, accessibility thresholds can
-be obtained directly with the CLI:
+be obtained directly with the CLI. This prints the suggested thresholds
+and, with `-o`, writes them to a threshold file:
 
 ```bash
-pbview preprocess thresholds datastore
+pbview preprocess thresholds datastore -o thresholds.yml
 ```
 
-The command checks that the missingness summary for the chosen
-`--missing-data-threshold` (default 3) exists and stops with an error
-otherwise.
+The file holds the values the app starts with: coverage thresholds from
+the coverage distribution of each sample set, and `max_missing_samples`
+set to half of the samples in the set. The command checks that the
+missingness summary for the chosen `--missing-data-threshold` (default
+3) exists and stops with an error otherwise. An existing file is only
+overwritten with `--force`.
 
 ### 4. Export of masks
 

@@ -152,6 +152,8 @@ are a preprocess-time input: `serve` reads them from the store.
 repeatable on `preprocess missingness|all` (one `<track>_missing_cutoff=<N>`
 summary per value) and on `mask generate`, where masks for several
 cutoffs carry a `missing_cutoff` dimension that `mask export` selects on.
+`preprocess thresholds -o` writes the app's default thresholds as a
+threshold file for `mask generate`.
 
 ## Testing
 
