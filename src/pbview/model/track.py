@@ -44,6 +44,10 @@ if TYPE_CHECKING:
     )
 
 
+class MissingSummaryError(ValueError):
+    """A summary track that is needed is not in the store."""
+
+
 def _isel_intervals(data: xr.Dataset, intervals: PositionIntervals):
     """isel intervals from data along the position dimension."""
     # FIXME: Check if intervals correspond to entire genome
@@ -261,10 +265,22 @@ class Track:
 
     def _require_sum(self) -> Track:
         if self.summaries.sum is None:
-            raise ValueError(
+            raise MissingSummaryError(
                 f"track {self.name!r} has no sum summary; run `pbview preprocess`"
             )
         return self.summaries.sum
+
+    def require_missingness(self, cutoff: int) -> Track:
+        """Missingness summary for `cutoff`, or a `MissingSummaryError`."""
+        summary = self.summaries.missingness.get(cutoff)
+        if summary is None:
+            available = sorted(self.summaries.missingness)
+            raise MissingSummaryError(
+                f"track {self.name!r} has no missingness summary for cutoff "
+                f"{cutoff} (available: {available}); run `pbview preprocess "
+                f"missingness --missing-data-threshold {cutoff}`"
+            )
+        return summary
 
     @lru_cache(maxsize=None)
     def sum_hist(self, sample_set: str, n_samples: int) -> np.ndarray:
