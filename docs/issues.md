@@ -38,4 +38,5 @@
 
 - [ ] coverage above `PBVIEW_MAX_COVERAGE_PER_SAMPLE` per sample is
       truncated into the last histogram bin; only a log warning says so
-- [ ] `Track.from_tree(raw=None)` fails; make `raw` required
+- [x] `Track.from_tree(raw=None)` fails; make `raw` required. Fix:
+      accept `None`, return track with identity grouping only

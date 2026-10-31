@@ -160,6 +160,20 @@ def test_contig_mean_sum_coverage(track):
     )
 
 
+def test_from_tree_raw_is_none():
+    depth = xr.Dataset(
+        {"depth": (("position", "sample"), np.zeros((24, 7), dtype=np.uint32))},
+        coords={"sample": ["s1", "s2", "s3", "s4", "s5", "s6", "s7"]},
+    )
+    raw = xr.DataTree.from_dict(
+        {
+            "/depth": depth,
+        }
+    )
+    track = Track.from_tree(name="depth", data=raw["depth"], raw=None)
+    assert track.groupings["identity"].shape == (7, 1)
+
+
 def test_from_tree_finds_meta(sample_sets):
     ss = xr.Dataset({"sample_set_membership": ensure_all_set(sample_sets)})
     depth = xr.Dataset(
