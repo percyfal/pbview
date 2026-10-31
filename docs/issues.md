@@ -41,12 +41,12 @@
       and read the data once for all sample sets; contig means are
       exact and also one pass
 - [ ] a selection of samples that is not exactly one sample set sums
-      the raw values. The sets of a selection are now read in one pass
-      and sampled before the sum, but on a 660 Mbp store with 32
-      samples it still takes 75-90 s per selection change (was 125-175 s),
-      bound by reading the raw chunks. Ideas: one raw pass for the
-      coverage and missingness histograms together (the pages ask for
-      both), or a sample-wise chunk layout for the raw track
+      the raw values. The sets of a selection are read in one pass,
+      together with their missingness for every cutoff (so the two
+      pages share it), and sampled before the sum. On a 660 Mbp store
+      with 32 samples a selection change still takes 75-90 s for both
+      pages (was 250-330 s), bound by reading the raw chunks. A
+      sample-wise chunk layout for the raw track would help
 - [x] estimated pages say so: a note, a `sampling` table column and
       "(estimated from every kth position)" in plot titles
 
