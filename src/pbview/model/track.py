@@ -36,6 +36,7 @@ from pbview.model.grouping import (
 )
 
 from .chunking import optimal_chunks_dask
+from .histogram import fold_hist
 
 if TYPE_CHECKING:
     from pbview.model.coordinates import (
@@ -62,6 +63,24 @@ def _isel_intervals(data: xr.Dataset, intervals: PositionIntervals):
     return xr.concat(
         parts, dim="position", data_vars="minimal", coords="minimal", compat="override"
     )
+
+
+def sample_stride(n_positions: int, max_positions: int) -> int:
+    """Every k-th position is counted when `max_positions` is exceeded.
+
+    k = ceil(n_positions / max_positions); 1 means all positions
+    (`max_positions` <= 0, or no more positions than that).
+    """
+    if 0 < max_positions < n_positions:
+        return -(-n_positions // max_positions)
+    return 1
+
+
+def _scaled(counts: np.ndarray, n_total: int, n_counted: int) -> np.ndarray:
+    """Scale counts of a sample of positions up to `n_total` positions."""
+    if n_counted == 0 or n_counted == n_total:
+        return counts
+    return np.rint(counts * (n_total / n_counted)).astype(counts.dtype)
 
 
 def select_data(
@@ -291,16 +310,60 @@ class Track:
         """`sum_hists` for one sample set."""
         return self.sum_hists((sample_set,), (n_samples,), max_positions)[sample_set]
 
-    @lru_cache(maxsize=None)
+    def _summary_sets(self, summary: Track) -> tuple[tuple[str, ...], tuple[int, ...]]:
+        """Sample sets of a summary track and their number of samples."""
+        totals = self.group_counts("sample_set", ())
+        sets = tuple(summary.columns)
+        return sets, tuple(totals[s][1] for s in sets)
+
+    @staticmethod
+    def _count_hists(
+        summary: Track,
+        sample_sets: tuple[str, ...],
+        caps: list[int],
+        max_positions: int,
+        intervals: PositionIntervals | None,
+    ) -> tuple[list[np.ndarray], int]:
+        """Histograms of summary columns in one pass: (histograms, positions counted).
+
+        Values are clipped at `caps[i]`, so histogram i has at least
+        `caps[i] + 1` bins. Every k-th position is counted, see
+        `sample_stride`.
+        """
+        columns = []
+        for s in sample_sets:
+            column = summary.column(s)
+            if intervals is not None:
+                column = _isel_intervals(column, intervals)
+            columns.append(column.data)
+        n = columns[0].shape[0] if columns else 0
+        stride = sample_stride(n, max_positions)
+        if stride > 1:
+            logger.info(
+                "Estimating histograms from every %d-th position (%d of %d)",
+                stride,
+                -(-n // stride),
+                n,
+            )
+            columns = [c[::stride] for c in columns]
+        graphs = [
+            da.bincount(da.minimum(c, cap), minlength=cap + 1)
+            for c, cap in zip(columns, caps)
+        ]
+        return list(dask.compute(*graphs)), -(-n // stride)
+
+    @lru_cache(maxsize=64)
     def sum_hists(
         self,
         sample_sets: tuple[str, ...],
         n_samples: tuple[int, ...],
         max_positions: int = 0,
+        intervals: PositionIntervals | None = None,
     ) -> dict[str, np.ndarray]:
-        """Histograms over the genome of the summed coverage of sample sets.
+        """Histograms of the summed coverage of sample sets.
 
-        `n_samples[i]` is the number of samples in `sample_sets[i]`. All
+        `n_samples[i]` is the number of samples in `sample_sets[i]`. The
+        positions are those of `intervals`, default the whole genome. All
         histograms are computed in one pass over the data: the store is
         read once, not once per sample set (about 1.3 times faster for
         four sets on a 660 Mbp store; the chunks of the sum track hold all
@@ -314,40 +377,26 @@ class Track:
         With `max_positions` (> 0) and more positions than that, every
         k-th position is counted, k = ceil(positions / max_positions),
         so the counts are those of a sample and sum to the number of
-        positions counted, not to the genome size. Every chunk is still
-        read; the saving is in the counting. Coverage has no periodicity
-        at this scale, so the sample is representative (on a 660 Mbp
-        store with 4 sample sets, counting every 66th position moved
-        lower/upper/max_bin by less than 0.3%). Reading all sets once and
-        sampling together made the thresholds 3.6 times faster there.
+        positions counted, not to the number of positions. Every chunk is
+        still read; the saving is in the counting. Coverage has no
+        periodicity at this scale, so the sample is representative (on a
+        660 Mbp store with 4 sample sets, counting every 66th position
+        moved lower/upper/max_bin by less than 0.3%). Reading all sets
+        once and sampling together made the thresholds 3.6 times faster
+        there.
 
         Returns:
             dict mapping each sample set to its histogram
         """
         if len(sample_sets) != len(n_samples):
             raise ValueError("sample_sets and n_samples must have the same length")
-        summary = self._require_sum()
         caps = [
             min(n * config.MAX_COVERAGE_PER_SAMPLE, config.MAX_COVERAGE_BIN)
             for n in n_samples
         ]
-        columns = [summary.column(s).data for s in sample_sets]
-        n = columns[0].shape[0] if columns else 0
-        stride = -(-n // max_positions) if 0 < max_positions < n else 1
-        if stride > 1:
-            logger.info(
-                "Estimating the sample set coverage histograms from every %d-th "
-                "position (%d of %d)",
-                stride,
-                -(-n // stride),
-                n,
-            )
-            columns = [c[::stride] for c in columns]
-        graphs = [
-            da.bincount(da.minimum(c, cap), minlength=cap + 1)
-            for c, cap in zip(columns, caps)
-        ]
-        hists = dask.compute(*graphs)
+        hists, _ = self._count_hists(
+            self._require_sum(), sample_sets, caps, max_positions, intervals
+        )
         result = {}
         for s, hist, cap in zip(sample_sets, hists, caps):
             if len(hist) > cap and hist[cap] > 0:
@@ -362,39 +411,74 @@ class Track:
             result[s] = hist[: nonzero[-1] + 1] if len(nonzero) else hist[:1]
         return result
 
-    @lru_cache(maxsize=None)
+    @lru_cache(maxsize=64)
+    def missingness_hists(
+        self,
+        cutoff: int,
+        sample_sets: tuple[str, ...],
+        n_samples: tuple[int, ...],
+        max_positions: int = 0,
+        intervals: PositionIntervals | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Histograms of the number of missing samples of sample sets.
+
+        As `sum_hists`, for the missingness summary of `cutoff`. Histogram
+        i has exactly `n_samples[i] + 1` bins: 0 .. all samples missing.
+        """
+        if len(sample_sets) != len(n_samples):
+            raise ValueError("sample_sets and n_samples must have the same length")
+        hists, _ = self._count_hists(
+            self.require_missingness(cutoff),
+            sample_sets,
+            list(n_samples),
+            max_positions,
+            intervals,
+        )
+        return dict(zip(sample_sets, hists))
+
     def contig_mean_coverage(self, sample_set: str) -> np.ndarray:
         """Mean summed coverage per contig for a sample set."""
+        return self._contig_means()[sample_set]
+
+    @lru_cache(maxsize=None)
+    def _contig_means(self) -> dict[str, np.ndarray]:
+        """Mean summed coverage per contig of every sample set, in one pass."""
         # FIXME: make progress optional
         with ProgressBar():
-            return self._compute_contig_mean(sample_set)
+            return self._compute_contig_means()
 
-    def _compute_contig_mean(self, sample_set: str) -> np.ndarray:
+    def _compute_contig_means(self) -> dict[str, np.ndarray]:
         logger.info("Calculating mean contig coverages")
         summary = self._require_sum()
-        sums_da = summary.column(sample_set).data
+        sums = summary.values.transpose("position", summary.column_dim)
+        sums_da = sums.data.rechunk({1: -1})
         offsets = summary.coords["offsets"].values
         lengths = np.diff(offsets)
         n_contigs = len(lengths)
+        n_sets = sums_da.shape[1]
 
         def _partial_reduceat(chunk, block_info=None):
             start = block_info[0]["array-location"][0][0]
             end = block_info[0]["array-location"][0][1]
+            partial = np.zeros((1, n_contigs, n_sets), dtype=np.int64)
             first = np.searchsorted(offsets, start, side="right") - 1
             last = np.searchsorted(offsets, end, side="left")
             local_offsets = np.clip(offsets[first : last + 1] - start, 0, len(chunk))
             if len(local_offsets) < 2:
-                return np.zeros(n_contigs, dtype=np.int64)
-            reduced = np.add.reduceat(chunk, local_offsets[:-1])
-            partial = np.zeros(n_contigs, dtype=np.int64)
-            partial[first : first + len(reduced)] = reduced
-            return partial.reshape(1, -1)
+                return partial
+            reduced = np.add.reduceat(chunk, local_offsets[:-1], axis=0, dtype=np.int64)
+            partial[0, first : first + len(reduced)] = reduced
+            return partial
 
         per_chunk = sums_da.map_blocks(
-            _partial_reduceat, dtype=np.int64, chunks=(1, n_contigs), new_axis=1
+            _partial_reduceat,
+            dtype=np.int64,
+            chunks=((1,) * sums_da.numblocks[0], (n_contigs,), (n_sets,)),
+            new_axis=1,
         )
         per_contig_sum = per_chunk.sum(axis=0).compute()
-        return per_contig_sum / lengths
+        means = per_contig_sum / lengths[:, None]
+        return {s: means[:, i] for i, s in enumerate(summary.columns)}
 
     def select(self, resolved: ResolvedSelection) -> xr.Dataset:
         """Select the resolved columns and positions (original chunking)."""
@@ -421,69 +505,108 @@ class Track:
 
     @lru_cache(maxsize=64)
     def _coverage_hist_cached(
-        self, bins: npt.NDArray[int], resolved: ResolvedSelection
+        self,
+        bins: npt.NDArray[int],
+        resolved: ResolvedSelection,
+        max_positions: int = 0,
     ):
         logger.info("Calculating histogram of coverage for '%s' track", self.name)
         logger.debug("Current selection: %s", resolved)
         bins = np.asarray(bins)
         name = self._matching_group_of(resolved.labels, "sample_set")
         summary = self.summaries.sum
+        max_bin = int(bins[-1])
+        n_total = resolved.intervals.n_positions
         if name is not None and summary is not None:
+            sets, sizes = self._summary_sets(summary)
+            cap = min(
+                sizes[sets.index(name)] * config.MAX_COVERAGE_PER_SAMPLE,
+                config.MAX_COVERAGE_BIN,
+            )
+            if max_bin <= cap:
+                # All sample sets in one pass; bins are folded from the
+                # histogram, so changing them needs no new pass
+                h = self.sum_hists(sets, sizes, max_positions, resolved.intervals)[name]
+                counts = fold_hist(h, max_bin + 1)
+                return _scaled(counts, n_total, int(h.sum())), bins
             sums = _isel_intervals(summary.column(name), resolved.intervals)
         else:
             # Raw path
             arr = select_data(self._hist_view, resolved)["values"]
             sums = arr.sum(self.column_dim).astype(np.int32)
-        max_bin = int(bins[-1])
-        sums_clipped = da.minimum(sums.data, max_bin)
-        hist = da.bincount(sums_clipped, minlength=int(bins[-1]) + 1)
+        data = sums.data
+        stride = sample_stride(n_total, max_positions)
+        if stride > 1:
+            data = data[::stride]
+        hist = da.bincount(da.minimum(data, max_bin), minlength=max_bin + 1)
         with ProgressBar():
-            return hist.compute(), bins
+            counts = hist.compute()
+        return _scaled(counts, n_total, data.shape[0]), bins
 
     def coverage_hist(
         self,
         bins: npt.NDArray[int],
         resolved: ResolvedSelection,
+        max_positions: int = 0,
     ):
         """Calculate coverage histogram for a given number of bins and selection.
 
         The histogram values are calculated as the sum of values across all samples.
+        Coverage above the last bin is counted in it.
+
+        With `max_positions` (> 0) and more selected positions than that,
+        every k-th position is counted and the counts are scaled up to
+        the number of selected positions, so they are estimates (see
+        `sample_stride`, `sum_hists`).
 
         Args:
             bins: number of bins for histogram
             resolved: selection resolved for this track
                 (`Coordinates.resolve_for`)
+            max_positions: most positions to count; 0 counts all
         Returns:
             Histogram, bins as a numpy arrays
         """
-        return self._coverage_hist_cached(tuple(bins.tolist()), resolved)
+        return self._coverage_hist_cached(tuple(bins.tolist()), resolved, max_positions)
 
     @lru_cache(maxsize=64)
     def _missingness_hist_cached(
-        self, bins: npt.NDArray, resolved: ResolvedSelection, missing_cutoff: int
+        self,
+        bins: npt.NDArray,
+        resolved: ResolvedSelection,
+        missing_cutoff: int,
+        max_positions: int = 0,
     ):
         logger.info("Calculating missingness histogram for '%s' track", self.name)
         logger.debug("Current selection: %s", resolved)
         bins = np.asarray(bins)
         name = self._matching_group_of(resolved.labels, "sample_set")
+        n_total = resolved.intervals.n_positions
 
         summary = self.summaries.missingness.get(missing_cutoff)
         if name is not None and summary is not None:
-            counts = _isel_intervals(summary.column(name), resolved.intervals).data
-        else:
-            # Raw path
-            arr = select_data(self._hist_view, resolved)["values"]
-            counts = (arr <= missing_cutoff).astype(np.int32).sum(self.column_dim).data
+            sets, sizes = self._summary_sets(summary)
+            h = self.missingness_hists(
+                missing_cutoff, sets, sizes, max_positions, resolved.intervals
+            )[name]
+            return _scaled(fold_hist(h, len(bins)), n_total, int(h.sum())), bins
+        # Raw path
+        arr = select_data(self._hist_view, resolved)["values"]
+        data = (arr <= missing_cutoff).astype(np.int32).sum(self.column_dim).data
+        stride = sample_stride(n_total, max_positions)
+        if stride > 1:
+            data = data[::stride]
         max_bin = int(bins[-1])
-        counts_clipped = da.minimum(counts, max_bin)
+        hist = da.bincount(da.minimum(data, max_bin), minlength=max_bin + 1)
         with ProgressBar():
-            hist = da.bincount(counts_clipped, minlength=max_bin).compute()
-        return hist, bins
+            counts = hist.compute()
+        return _scaled(counts, n_total, data.shape[0]), bins
 
     def missingness_hist(
         self,
         resolved: ResolvedSelection,
         missing_cutoff: int = 0,
+        max_positions: int = 0,
     ):
         """Calculate missingness histogram for a given number of bins
         and selection.
@@ -495,12 +618,15 @@ class Track:
             resolved: selection resolved for this track
                 (`Coordinates.resolve_for`)
             missing_cutoff: cutoff value to treat values as missing (default: 0)
+            max_positions: most positions to count, 0 counts all; with
+                more selected positions every k-th is counted and the
+                counts are scaled up (see `coverage_hist`)
         Returns:
             Histogram, bins as a numpy arrays
         """
         bins = np.arange(0, len(resolved.labels) + 1)
         return self._missingness_hist_cached(
-            tuple(bins.tolist()), resolved, missing_cutoff
+            tuple(bins.tolist()), resolved, missing_cutoff, max_positions
         )
 
     # FIXME: would it be possible to cheaply calculate the *combined*

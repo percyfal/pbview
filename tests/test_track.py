@@ -709,6 +709,122 @@ def test_coverage_hist_summary_and_raw_paths(track, coord, genome):
     )
 
 
+def _raw_sums(columns):
+    raw = _helpers.tiny_datatree()["depth"]["values"].values  # (position, sample)
+    return raw[:, columns].sum(1)
+
+
+def _counting_computes(monkeypatch):
+    calls = []
+    real = dask.compute
+    monkeypatch.setattr(
+        dask, "compute", lambda *a, **k: calls.append(len(a)) or real(*a, **k)
+    )
+    return calls
+
+
+def test_contig_means_of_every_set(track):
+    offsets = track.summaries.sum.coords["offsets"].values
+    for s in ("ALL", "pop1", "pop2", "pop3"):
+        sums = track.summaries.sum.column(s).values
+        expected = [
+            sums[a:b].mean() for a, b in zip(offsets[:-1], offsets[1:], strict=True)
+        ]
+        np.testing.assert_allclose(track.contig_mean_coverage(s), expected)
+
+
+def test_coverage_hists_of_all_sets_are_read_once(track, coord, genome, monkeypatch):
+    calls = _counting_computes(monkeypatch)
+    bins = np.arange(0, 201)
+    for s in ("ALL", "pop1", "pop2", "pop3"):
+        resolved = coord.with_sample_sets([s]).resolve_for(track, genome)
+        track.coverage_hist(bins=bins, resolved=resolved)
+    assert calls == [4]
+
+
+@pytest.mark.parametrize("max_bin", [5, 50, 200])
+def test_coverage_hist_folds_the_bins_from_the_cached_histogram(
+    track, coord, genome, max_bin
+):
+    resolved = coord.with_sample_sets(["ALL"]).resolve_for(track, genome)
+    counts, bins = track.coverage_hist(bins=np.arange(max_bin + 1), resolved=resolved)
+    expected = np.bincount(
+        np.minimum(_raw_sums(slice(None)), max_bin), minlength=max_bin + 1
+    )
+    np.testing.assert_array_equal(counts, expected)
+
+
+def test_coverage_hist_beyond_the_cap_is_still_exact(track, coord, genome, monkeypatch):
+    monkeypatch.setattr(config, "MAX_COVERAGE_PER_SAMPLE", 1)  # cap 7 for ALL
+    resolved = coord.with_sample_sets(["ALL"]).resolve_for(track, genome)
+    counts, _ = track.coverage_hist(bins=np.arange(201), resolved=resolved)
+    expected = np.bincount(np.minimum(_raw_sums(slice(None)), 200), minlength=201)
+    np.testing.assert_array_equal(counts, expected)
+
+
+@pytest.mark.parametrize(
+    ("columns", "select"),
+    [
+        (slice(None), lambda c: c.with_sample_sets(["ALL"])),
+        ([3, 4], lambda c: c.with_sample_sets(["pop2"])),  # a group: the summary
+        ([3, 4, 5], lambda c: c.with_samples(["s4", "s5", "s6"])),  # no group: raw
+    ],
+)
+def test_coverage_hist_estimates_are_scaled_to_the_selection(
+    track, coord, genome, columns, select
+):
+    sums = _raw_sums(columns)
+    resolved = select(coord).resolve_for(track, genome)
+    counts, _ = track.coverage_hist(
+        bins=np.arange(201), resolved=resolved, max_positions=5
+    )
+    sample = np.bincount(np.minimum(sums[::5], 200), minlength=201)
+    np.testing.assert_array_equal(counts, np.rint(sample * 24 / 5).astype(int))
+    assert abs(counts.sum() - 24) <= 5
+
+
+def test_coverage_hist_estimates_use_the_selected_positions(track, coord, genome):
+    resolved = (
+        coord.with_contigs(["chr2"])
+        .with_sample_sets(["ALL"])
+        .resolve_for(track, genome)
+    )
+    ((start, end),) = resolved.intervals.intervals
+    n = end - start
+    assert 0 < n < 24
+    counts, _ = track.coverage_hist(
+        bins=np.arange(201), resolved=resolved, max_positions=3
+    )
+    stride = -(-n // 3)
+    sample = np.bincount(
+        np.minimum(_raw_sums(slice(None))[start:end][::stride], 200), minlength=201
+    )
+    m = len(range(0, n, stride))
+    np.testing.assert_array_equal(counts, np.rint(sample * n / m).astype(int))
+
+
+def test_missingness_hists_of_all_sets_are_read_once(track, coord, genome, monkeypatch):
+    calls = _counting_computes(monkeypatch)
+    for s in ("ALL", "pop1", "pop2", "pop3"):
+        resolved = coord.with_sample_sets([s]).resolve_for(track, genome)
+        counts, bins = track.missingness_hist(resolved=resolved, missing_cutoff=3)
+        assert len(counts) == len(bins) == len(resolved.labels) + 1
+    assert calls == [4]
+
+
+def test_missingness_hist_estimates_are_scaled(track, coord, genome):
+    resolved = coord.with_sample_sets(["pop1"]).resolve_for(track, genome)
+    exact, _ = track.missingness_hist(resolved=resolved, missing_cutoff=3)
+    est, _ = track.missingness_hist(
+        resolved=resolved, missing_cutoff=3, max_positions=5
+    )
+    raw = _helpers.tiny_datatree()["depth"]["values"].values[:, :3]
+    missing = (raw <= 3).sum(1)
+    sample = np.bincount(missing[::5], minlength=4)
+    np.testing.assert_array_equal(est, np.rint(sample * 24 / 5).astype(int))
+    assert exact.sum() == 24
+
+
 def test_require_missingness(full_ds):
     track = full_ds.tracks["depth"]
     assert track.require_missingness(3) is full_ds.tracks["depth_missing_cutoff=3"]
