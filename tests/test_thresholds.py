@@ -3,10 +3,13 @@ from __future__ import annotations
 import pytest
 import yaml
 
+from pbview.model.histogram import compute_threshold_defaults
 from pbview.model.thresholds import (
     SCHEMA_VERSION,
     SampleSetThresholds,
     ThresholdProfile,
+    default_max_missing_samples,
+    profile_from_defaults,
     profile_from_state,
 )
 
@@ -90,3 +93,25 @@ def test_profile_from_state_builds_correct_profile():
     assert profile.schema_version == SCHEMA_VERSION
     assert profile.sample_sets["ALL"] == SampleSetThresholds(3, 5, 500, 3)
     assert profile.sample_sets["set_A"] == SampleSetThresholds(3, 4, 200, 3)
+
+
+@pytest.mark.parametrize("n,expected", [(1, 0), (2, 1), (3, 1), (7, 3)])
+def test_default_max_missing_samples(n, expected):
+    assert default_max_missing_samples(n) == expected
+
+
+def test_profile_from_defaults(full_ds):
+    track = full_ds.tracks["depth"]
+    defaults = compute_threshold_defaults(full_ds, "depth")
+    profile = profile_from_defaults(track, defaults, full_ds.id, missing_cutoff=3)
+    assert profile.dataset_id == full_ds.id
+    assert profile.schema_version == SCHEMA_VERSION
+    # coverage thresholds as checked against the raw data in test_histogram;
+    # max_missing_samples is half of the 7, 3, 2 and 2 samples
+    assert profile.sample_sets == {
+        "ALL": SampleSetThresholds(3, 73, 229, 3),
+        "pop1": SampleSetThresholds(3, 27, 90, 1),
+        "pop2": SampleSetThresholds(3, 26, 83, 1),
+        "pop3": SampleSetThresholds(3, 19, 59, 1),
+    }
+    assert ThresholdProfile.from_yaml(profile.to_yaml()) == profile

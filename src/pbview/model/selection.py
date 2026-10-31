@@ -14,6 +14,7 @@ import pandas as pd
 import param
 
 from pbview.model.coordinates import ColumnSelection, Coordinates, Genome
+from pbview.model.thresholds import default_max_missing_samples
 
 if TYPE_CHECKING:
     from pbview.model.track import Track
@@ -140,7 +141,7 @@ def make_selection_state_class(
         )
         n_samples = track.n_selected(base_coord.with_sample_sets([s]).column)
         params[f"max_missing_samples_{s}"] = param.Integer(
-            default=int(n_samples / 2),
+            default=default_max_missing_samples(n_samples),
             bounds=(0, n_samples),
             doc=(
                 "A site with >= max_missing_samples is inaccessible. "

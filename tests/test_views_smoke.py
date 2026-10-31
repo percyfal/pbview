@@ -1,6 +1,8 @@
 import pytest
 
 from pbview.model.coordinates import Coordinates
+from pbview.model.histogram import compute_threshold_defaults
+from pbview.model.thresholds import profile_from_defaults, profile_from_state
 from pbview.view.coordinates import selection_overview
 from pbview.view.datastore import DataStoreView
 
@@ -74,3 +76,11 @@ def test_summary_scatter_click_selects_contigs(dsv):
     assert state.coord.selected_contigs(genome) == ("chr1",)
     page._on_select("indices", rows[:1], [])  # clearing the selection selects all
     assert set(state.contigs) == {"chr1", "chr2", "chr10"}
+
+
+def test_exported_thresholds_match_the_app_defaults(full_ds, dsv):
+    defaults = compute_threshold_defaults(full_ds, "depth")
+    exported = profile_from_defaults(
+        full_ds.tracks["depth"], defaults, full_ds.id, missing_cutoff=3
+    )
+    assert exported == profile_from_state(dsv.state, full_ds.id)

@@ -5,6 +5,7 @@ import pytest
 from pbview import config
 from pbview.model.datastore import DataStore
 from pbview.model.grouping import IDENTITY_DIM, grouping_hash
+from pbview.model.thresholds import SampleSetThresholds, ThresholdProfile
 from pbview.model.track import MissingSummaryError
 from pbview.preprocess import preprocess as preprocess_mod
 from pbview.preprocess.track import compute_track_missingness, compute_track_sum
@@ -138,3 +139,31 @@ def test_compute_thresholds_requires_the_missingness_cutoff(
     )
     with pytest.raises(MissingSummaryError, match=r"cutoff 9 \(available: \[3\]\)"):
         preprocess_mod.compute_thresholds(path, progress=False, missing_cutoff=9)
+
+
+def test_compute_thresholds_writes_a_threshold_file(
+    make_datastore_path, sample_sets, tmp_path
+):
+    path = make_datastore_path(
+        with_sum=True, with_missing=True, sample_sets=sample_sets
+    )
+    output = tmp_path / "thresholds.yml"
+    preprocess_mod.compute_thresholds(path, progress=False, output=output)
+    profile = ThresholdProfile.read(output)
+    assert profile.dataset_id == DataStore(path).id
+    assert list(profile.sample_sets) == ["ALL", "pop1", "pop2", "pop3"]
+    assert profile.sample_sets["pop1"] == SampleSetThresholds(3, 27, 90, 1)
+
+
+def test_compute_thresholds_writes_nothing_without_the_cutoff(
+    make_datastore_path, sample_sets, tmp_path
+):
+    path = make_datastore_path(
+        with_sum=True, with_missing=True, sample_sets=sample_sets
+    )
+    output = tmp_path / "thresholds.yml"
+    with pytest.raises(MissingSummaryError):
+        preprocess_mod.compute_thresholds(
+            path, progress=False, missing_cutoff=9, output=output
+        )
+    assert not output.exists()
