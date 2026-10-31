@@ -63,6 +63,9 @@ repos:
     rev: v0.23.3
     hooks:
       - id: markdownlint-cli2
+        # nodeenv cannot parse the newest node on nodejs.org (27.0.0-alpha),
+        # so "default" fails to install; pin a released version
+        language_version: 22.12.0
         files: \.(md|qmd)$
         types: [file]
         exclude: LICENSE.md
