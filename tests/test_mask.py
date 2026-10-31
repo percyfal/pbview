@@ -120,7 +120,9 @@ def test_generate_mask_for_several_cutoffs(several_cutoff_mask):
 
 def test_a_larger_cutoff_never_adds_accessible_sites(several_cutoff_mask):
     accessible = several_cutoff_mask["accessible"]
-    assert not (accessible.sel(missing_cutoff=5) & ~accessible.sel(missing_cutoff=3)).any()
+    assert not (
+        accessible.sel(missing_cutoff=5) & ~accessible.sel(missing_cutoff=3)
+    ).any()
     assert (accessible.sel(missing_cutoff=3) != accessible.sel(missing_cutoff=5)).any()
 
 

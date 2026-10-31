@@ -148,6 +148,10 @@ not in the views.
 grouping), `pbview mask` (`generate` from a threshold profile, `export`),
 `pbview summarize`, `pbview annotation` and `pbview serve`. Sample sets
 are a preprocess-time input: `serve` reads them from the store.
+`--missing-data-threshold` selects the missingness cutoff. It is
+repeatable on `preprocess missingness|all` (one `<track>_missing_cutoff=<N>`
+summary per value) and on `mask generate`, where masks for several
+cutoffs carry a `missing_cutoff` dimension that `mask export` selects on.
 
 ## Testing
 

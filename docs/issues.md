@@ -2,7 +2,7 @@
 
 ## CLI
 
-- [ ] missingness option for `pbview preprocess missingness` and
+- [x] missingness option for `pbview preprocess missingness` and
       `pbview preprocess all` missing; add to `pbview.cli.preprocess`
       (currently the default cutoff 3 cannot be changed).
       `preprocess()` already takes `missing_cutoff`, so this is only
@@ -11,7 +11,7 @@
       thresholds` (needs a default for `max_missing_samples`, which
       only the UI computes today as n_samples / 2, and a profile
       builder that does not require a UI state)
-- [ ] `pbview preprocess thresholds --threshold INT` should make use
+- [x] `pbview preprocess thresholds --threshold INT` should make use
       of `depth_missing_cutoff=INT`; throw error if this has not been
       preprocessed. Also, `--threshold` is a poor name (better
       `--missing-data-threshold`?; meaning is "Coverage threshold for
@@ -21,6 +21,9 @@
       `track.summaries.missingness.get(INT)`; `generate_mask` has an
       error message to reuse. Use one option name across all
       preprocess commands and the README
+      Done: `--missing-data-threshold` (`--threshold` kept as an
+      alias on `thresholds`); the cutoff is validated but not used
+      further yet
 - [ ] `pbview serve` opens a browser by default (`--show`); consider
       `--no-show` as the default
 - [ ] `pbview summarize` and `pbview annotation` have not been
