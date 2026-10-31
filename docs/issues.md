@@ -29,14 +29,17 @@
 - [ ] `pbview serve` opens a browser by default (`--show`); consider
       `--no-show` as the default
 - [ ] `pbview summarize` and `pbview annotation` have not been
-      exercised since the selection refactor
-- [ ] stores preprocessed before the summary attrs
-      (`perbase:source_track`, `perbase:missing_cutoff`) need
+      exercised since the selection refactor; hidden for the time
+      being
+- [x] INVALID: no user base. stores preprocessed before the summary
+      attrs (`perbase:source_track`, `perbase:missing_cutoff`) need
       `pbview preprocess` again; document, or add a clear error
 
 ## Other
 
-- [ ] coverage above `PBVIEW_MAX_COVERAGE_PER_SAMPLE` per sample is
-      truncated into the last histogram bin; only a log warning says so
+- [x] coverage above `PBVIEW_MAX_COVERAGE_PER_SAMPLE` per sample is
+      clipped into the last bin of `Track.sum_hist` (and of
+      `coverage_hist` at `maxbins`), with a log warning; the warning
+      claimed this before `sum_hist` actually did it
 - [x] `Track.from_tree(raw=None)` fails; make `raw` required. Fix:
       accept `None`, return track with identity grouping only

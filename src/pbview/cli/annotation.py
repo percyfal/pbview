@@ -24,7 +24,7 @@ from ._common import (
 )
 
 
-@click.group()
+@click.group(hidden=True)
 def annotation() -> None:
     """Import and generate annotation tracks for a pbzarr store."""
     pass

@@ -561,6 +561,23 @@ def test_sum_hist(track):
     assert track.sum_hist("ALL", 7).sum() == 24  # one count per position
 
 
+def test_sum_hist_matches_bincount(track):
+    sums = track.summaries.sum.column("ALL").values
+    assert np.array_equal(track.sum_hist("ALL", 7), np.bincount(sums))
+
+
+def test_sum_hist_clips_at_the_cap(track, monkeypatch):
+    sums = track.summaries.sum.column("ALL").values
+    monkeypatch.setattr(config, "MAX_COVERAGE_PER_SAMPLE", 1)
+    cap = 2  # n_samples * MAX_COVERAGE_PER_SAMPLE
+    assert sums.max() > cap  # the data does exceed the cap
+    hist = track.sum_hist("ALL", 2)
+    assert len(hist) == cap + 1
+    assert hist.sum() == len(sums)
+    assert hist[cap] == (sums >= cap).sum()
+    assert np.array_equal(hist[:cap], np.bincount(sums)[:cap])
+
+
 def test_sum_hist_requires_summary(raw_ds):
     with pytest.raises(ValueError, match="no sum summary"):
         raw_ds.tracks["depth"].sum_hist("ALL", 7)

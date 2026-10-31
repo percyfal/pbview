@@ -105,6 +105,21 @@ def hist_quantile(hist, q, values=None):
     return result[0] if np.isscalar(q) else result
 
 
+def fold_hist(hist, n_bins: int) -> np.ndarray:
+    """Histogram of values clipped to `n_bins - 1`, from an unclipped one.
+
+    Bins `n_bins - 1` and above are summed into the last bin; a shorter
+    histogram is padded with zeros. This equals re-binning the underlying
+    values after `np.minimum(values, n_bins - 1)`, without another pass.
+    """
+    hist = np.asarray(hist)
+    out = np.zeros(n_bins, dtype=hist.dtype)
+    m = min(n_bins, len(hist))
+    out[:m] = hist[:m]
+    out[n_bins - 1] += hist[n_bins:].sum()
+    return out
+
+
 def compute_threshold_defaults(
     datastore: "DataStore",
     active_track: str,
@@ -120,6 +135,8 @@ def compute_threshold_defaults(
     across the entire genome and may therefore not be representative
     of the actual coverage distribution in a given region.
 
+    The genome is read once per sample set (`Track.sum_hist`); the
+    histogram clipped at `max_bin` that gives `upper` is derived from it.
     """
     result = {}
     track = datastore.tracks[active_track]
@@ -130,9 +147,8 @@ def compute_threshold_defaults(
         stats = hist_stats(h)
         lo = int(0.6 * stats["mean"])
         mb = int(hist_quantile(h, max_bin_q) * max_bin_headroom)
-        bins = np.arange(mb)
-        counts, bins = track.coverage_hist(bins=bins, resolved=resolved)
-        stats = hist_stats(counts, bins)
+        counts = fold_hist(h, mb)  # the histogram clipped at mb - 1
+        stats = hist_stats(counts)
         hi = int(stats["median"] + 2 * stats["std"])
         result[f"lower_coverage_{s}"] = lo
         result[f"upper_coverage_{s}"] = hi

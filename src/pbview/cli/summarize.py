@@ -16,7 +16,7 @@ from ._common import (
 )
 
 
-@click.command()
+@click.command(hidden=True)
 @path_argument(dir_okay=True, nargs=1)
 @annotation_file_option()
 @threads_option()
