@@ -7,6 +7,7 @@ from pbview.preprocess import preprocess as preprocess_mod
 
 from ._common import (
     chunk_size_option,
+    max_positions_option,
     memory_limit_option,
     missing_data_threshold_option,
     missing_summary_errors,
@@ -129,6 +130,7 @@ def preprocess_missingness(
 @progress_option()
 @chunk_size_option()
 @missing_data_threshold_option(default=3, deprecated_alias=True)
+@max_positions_option()
 @click.option(
     "-o",
     "--output",
@@ -148,15 +150,18 @@ def preprocess_thresholds(
     progress: bool,
     chunk_size: int,
     missing_data_threshold: int = 3,
+    max_positions: int | None = None,
     output: str | None = None,
     force: bool = False,
 ) -> None:
     """Compute thresholds for missingness and sum data.
 
-    The missingness summary for the chosen threshold must have been
-    created with `pbview preprocess missingness`. With --output the
-    thresholds are also written as a threshold file with the values the
-    app starts with.
+    Genomes with more positions than --max-positions are sampled at
+    evenly spaced positions, so the numbers are estimates; use
+    --max-positions 0 for the exact values. The missingness summary
+    for the chosen threshold must have been created with `pbview
+    preprocess missingness`. With --output the thresholds are also
+    written as a threshold file with the values the app starts with.
     """
     if output is not None and Path(output).exists() and not force:
         raise click.ClickException(f"{output} exists; use --force to overwrite it")
@@ -168,6 +173,7 @@ def preprocess_thresholds(
             chunk_size=chunk_size,
             missing_cutoff=missing_data_threshold,
             output=output,
+            max_positions=max_positions,
         )
 
 

@@ -84,3 +84,13 @@ def test_exported_thresholds_match_the_app_defaults(full_ds, dsv):
         full_ds.tracks["depth"], defaults, full_ds.id, missing_cutoff=3
     )
     assert exported == profile_from_state(dsv.state, full_ds.id)
+
+
+def test_app_defaults_honour_max_positions(full_ds):
+    dsv = DataStoreView(full_ds, max_positions=5)
+    defaults = compute_threshold_defaults(full_ds, "depth", max_positions=5)
+    assert defaults != compute_threshold_defaults(full_ds, "depth", max_positions=0)
+    expected = profile_from_defaults(
+        full_ds.tracks["depth"], defaults, full_ds.id, missing_cutoff=3
+    )
+    assert profile_from_state(dsv.state, full_ds.id) == expected

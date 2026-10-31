@@ -8,6 +8,7 @@ __date__ = "2026-09-17"
 
 import numpy as np
 
+from pbview import config
 from pbview.model.coordinates import Coordinates
 from pbview.model.datastore import DataStore
 
@@ -126,6 +127,7 @@ def compute_threshold_defaults(
     *,
     max_bin_q: float = 0.995,
     max_bin_headroom: float = 1.2,
+    max_positions: int | None = None,
 ) -> dict[str, tuple[int, int, int]]:
     """Compute threshold defaults for each sample set in a track.
 
@@ -137,13 +139,19 @@ def compute_threshold_defaults(
 
     The genome is read once per sample set (`Track.sum_hist`); the
     histogram clipped at `max_bin` that gives `upper` is derived from it.
+
+    With more than `max_positions` positions (default
+    `config.MAX_POSITIONS`; 0 uses all) the statistics are estimated
+    from evenly spaced positions, which makes them estimates.
     """
+    if max_positions is None:
+        max_positions = config.MAX_POSITIONS
     result = {}
     track = datastore.tracks[active_track]
     for s in track.groups("sample_set"):
         coord = Coordinates().with_sample_sets([s])
         resolved = coord.resolve_for(track, datastore.genome)
-        h = track.sum_hist(s, len(resolved.labels))
+        h = track.sum_hist(s, len(resolved.labels), max_positions)
         stats = hist_stats(h)
         lo = int(0.6 * stats["mean"])
         mb = int(hist_quantile(h, max_bin_q) * max_bin_headroom)

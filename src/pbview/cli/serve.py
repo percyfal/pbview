@@ -8,6 +8,7 @@ from ._common import (
     dashboard_option,
     dask_port_option,
     log_filter_option,
+    max_positions_option,
     path_argument,
     port_option,
     setup_dask_scheduler,
@@ -28,6 +29,7 @@ from ._common import (
 @workers_option()
 @dashboard_option()
 @chunk_size_option()
+@max_positions_option()
 @use_dask_option()
 @log_filter_option()
 @log_level()
@@ -40,8 +42,13 @@ def serve(
     show,
     servable,
     chunk_size,
+    max_positions,
 ):
-    """Serve the app."""
+    """Serve the app.
+
+    The default thresholds are estimated from at most --max-positions
+    evenly spaced positions (0: all).
+    """
     from ..app import serve as app_serve
 
     app_serve(
@@ -51,5 +58,6 @@ def serve(
         servable=servable,
         verbose=False,
         chunk_size=chunk_size,
+        max_positions=max_positions,
         annotation_file=annotation_file,
     )

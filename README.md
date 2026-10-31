@@ -185,6 +185,15 @@ missingness summary for the chosen `--missing-data-threshold` (default
 3) exists and stops with an error otherwise. An existing file is only
 overwritten with `--force`.
 
+The coverage statistics behind the defaults (mean, median, standard
+deviation and a high quantile) are computed over the whole genome. For
+genomes with more than 50 million positions they are estimated from
+evenly spaced positions instead, which is much faster and moved the
+thresholds by less than 0.3% on a 660 Mbp store. Change the limit with
+`--max-positions N` (also on `pbview serve`), or set the environment
+variable `PBVIEW_MAX_POSITIONS`; `--max-positions 0` uses every
+position. Masks are always computed from all positions.
+
 ### 4. Export of masks
 
 Once a threshold file `thresholds.yml` has been obtained, the final
