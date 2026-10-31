@@ -1,0 +1,166 @@
+# pbview design
+
+pbview visualises per-base coverage across samples and sample sets, and
+derives accessibility masks from it. Data live in a *pbzarr* store
+(per-base Zarr, an external specification we cannot change). This
+document records the structure of the code and the decisions that are
+not obvious from reading it. Docstrings carry the detail; this is the
+map.
+
+## Data
+
+A store holds *tracks*. Each track is a pbzarr group with
+
+- `values`, dims `(position, <column_dim>)`, usually `(position, sample)`;
+- coordinates `contigs` (dim `contig`) and `offsets` (dim
+  `contig_boundary`, CSR style: `len(contigs) + 1` entries), which give
+  the global position axis. `position` has no stored coordinate;
+- `perbase:*` attrs (`version`, `coordinates`, `genome_checksum`, ...);
+- optionally `_meta/column_groupings` (see Groupings).
+
+pbzarr hides `_meta`, so `DataStore` opens the store twice: through
+`pbzarr.open` (validated) and as a raw datatree
+(`xr.open_datatree(..., engine="zarr")`) from which `Track.from_tree`
+reads groupings and attrs.
+
+Tracks can have different column dimensions; they share the position
+axis. Data are immutable. Only the selection state changes at runtime.
+
+## Layers
+
+| Layer      | Modules           | Responsibility                                        |
+|------------|-------------------|-------------------------------------------------------|
+| model      | `model/`          | Pure values and computations. No Panel.               |
+| preprocess | `preprocess/`     | Writes groupings and summary tracks.                  |
+| mask       | `mask/`           | Accessibility masks from thresholds.                  |
+| view       | `view/`, `app.py` | Panel UI over a selection state.                      |
+| cli        | `cli/`            | Click commands: parse, open resources, call the core. |
+
+The CLI is a thin shell. It opens resources and forwards to functions
+that take rich objects, so domain logic stays testable without Click.
+
+## Selection model
+
+Selections are *pure values*. They never hold data and are hashable.
+
+- `SpatialSelection(contigs)` and `ColumnSelection(column_dim, labels)`.
+  `None` means "no filter" (the whole universe); `()` means "nothing".
+- `Coordinates(spatial, column)` is a frozen dataclass: one spatial
+  selection and at most one `ColumnSelection` per column dim. Every
+  `with_*` method returns a new object. `with_samples` and
+  `with_sample_sets` *replace* the selection on their dim; `None`, or a
+  list containing `ALL`, resets it.
+- Resolution turns values into explicit data:
+  `coords.resolve_for(track, genome)` gives a `ResolvedSelection`
+  (`PositionIntervals`, `column_dim`, explicit `labels`; empty means no
+  columns, never all). `Track.select(resolved)` applies it.
+- `Genome` maps contigs to global intervals (adjacent intervals merge)
+  and holds tuples only, so it can key `lru_cache`.
+- Validation happens when a selection is resolved, never at
+  construction: unknown contigs or labels raise then.
+- Selections on different dims *intersect*. A selection on a dim with a
+  grouping (for example `sample_set` on a `sample` track) picks every
+  column that belongs to any selected group. A selection that does not
+  apply to a track (a `sample` selection on a summary track) is skipped,
+  except for the projection pairs in `_PROJECTIONS`, where a missing
+  grouping is an error.
+
+## Groupings
+
+A grouping is a boolean `(column, group)` membership, for example
+`(sample, sample_set)`. A column may belong to several groups.
+
+- Every track exposes a derived *identity* grouping
+  `(column_dim, "identity")` with the single set `ALL`. It is computed
+  from the labels and never stored. A track whose column dim is already
+  `identity` has none.
+- Stored groupings are user-supplied only. They live in
+  `/{track}/_meta/column_groupings`, one variable
+  `<group_dim>_membership` per group dim, and are written with
+  `write_column_groupings`.
+- `ALL` and `identity` are reserved. Stored groupings always contain an
+  all-True `ALL` set (`ensure_all_set`) and cannot use the dim
+  `identity`. `ALL` is an ordinary all-True set, so selecting it is a
+  no-op; `with_sample_sets` resets the selection for it, which also
+  works on stores that have no sample sets.
+- The group dim is singular: `sample_set`.
+
+## Summary tracks
+
+Per-set sums and missingness counts are precomputed by `preprocess` and
+stored as ordinary tracks.
+
+- A summary is recognised by its attrs, never by its name:
+  `perbase:source_track`, `perbase:provenance` (`config.SUMMARY_SUM`,
+  `config.SUMMARY_MISSINGNESS`) and, for missingness,
+  `perbase:missing_cutoff`.
+- Its column dim is the group dim of the grouping it was computed from
+  (`sample_set`, or `identity` when the track has no user grouping).
+  `perbase:source_grouping_hash` records that grouping so staleness can
+  be detected.
+- `DataStore.summaries_of(track)` returns `Summaries(sum, missingness)`;
+  each base track carries its own as `Track.summaries`. If several
+  summaries claim one source, the first by name is kept and a warning is
+  logged.
+- Stores preprocessed before these attrs existed have no summaries until
+  `pbview preprocess` is run again. There is no name-based fallback.
+
+## Track
+
+`Track` is a frozen dataclass that compares and hashes by identity, so
+its methods can use `lru_cache`. It offers selection (`select`),
+column and group queries (`resolve_columns`, `n_selected`, `groups`,
+`group_counts`, `matching_group`), and the histogram computations
+(`coverage_hist`, `missingness_hist`, `sum_hist`, `contig_mean_coverage`).
+A histogram uses the precomputed summary when the selection equals one
+group exactly, and the raw data otherwise. Computations live on `Track`,
+not in the views.
+
+## State and views
+
+- `DataStore` owns the tracks and the store-level universe (samples,
+  contigs, genome), taken from a *base track*, the first track in sorted
+  order with a `sample` dim. This is a stopgap until pbzarr exposes the
+  coordinates at the root (`FIXME(pbzarr>0.6)`). It is unrelated to the
+  UI's `active_track`.
+- `SelectionStateBase` (a `param.Parameterized`) is the shared UI state:
+  contig length bounds, picked samples and contigs, the active track and
+  the missing cutoff. It derives one `Coordinates` value, `state.coord`,
+  and generates per-set threshold parameters from the active track.
+- Views resolve `state.coord` for a track with `state.datastore.genome`,
+  then call the `Track` computation. `DataStoreView` coordinates the
+  pages (`SummaryPage`, `TrackCoveragePage`, `TrackMissingnessPage`) and
+  the sidebar (`CoordinatesView`, whose table is `selection_overview`).
+- There is one `DataStore` per `serve` process, shared by sessions.
+
+## Command line
+
+`pbview import` (D4 files into a store), `pbview preprocess`
+(`all`, `sum`, `missingness`, `thresholds`; `--sampleset-info` writes the
+grouping), `pbview mask` (`generate` from a threshold profile, `export`),
+`pbview summarize`, `pbview annotation` and `pbview serve`. Sample sets
+are a preprocess-time input: `serve` reads them from the store.
+
+## Testing
+
+- No demo data. Tests build tiny stores (`tests/_helpers.make_store`)
+  from a hand-written datatree with 7 samples and 3 contigs.
+- Fixtures own groupings and build them in memory; they never read them
+  back from the store they are about to test.
+- Computations are checked against independent numpy on the raw test
+  data, in addition to checking the code against itself.
+- Views have smoke tests that build `DataStoreView` and force each
+  reactive histogram and table once.
+- Mock only our own boundaries, not third-party code.
+
+## Open items
+
+- A CLI to add, update or overwrite a track's grouping. Rewriting one
+  group dim means reading and merging the others, because
+  `write_column_groupings` writes the whole `column_groupings` group.
+- Use `perbase:source_grouping_hash` to warn about stale summaries.
+- `SummaryPage._on_select` assigns into a frozen `Coordinates`; it needs
+  to set a new coordinate on the state instead.
+- `ColumnSelection.apply` and `project_to` are unused.
+- The scratch tests `test_features.py`, `test_annotation.py` and
+  `test_track_view.py` still use old signatures.

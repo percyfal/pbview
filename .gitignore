@@ -1,0 +1,16 @@
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+/src/pbview/_version.py
+*.bed
+*.bedGraph
+*.d4
+/store/
+/.projectile
+/.gitattributes
+/data/
+/opt/
+/docs/
+/uv.lock
+.cargo-target
+*.bak
