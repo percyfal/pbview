@@ -179,7 +179,7 @@ def port_option(default: int = 5507) -> Callable[[FC], FC]:
     return click.option("port", "--port", default=default, help="Port to serve on")
 
 
-def show_option(default: bool = True) -> Callable[[FC], FC]:
+def show_option(default: bool = False) -> Callable[[FC], FC]:
     return click.option(
         "--show/--no-show",
         default=default,
