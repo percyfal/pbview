@@ -107,16 +107,14 @@ class SummaryPage(pn.viewable.Viewer):
         try:
             if self._suspend:
                 return
-            if not new:
-                all_contigs = list(self.state.datastore.genome.contigs)
-                if set(all_contigs) == set(self.state.coord.spatial.contigs):
-                    return
-                self.state.coords.spatial.contigs = all_contigs
+            genome = self.state.datastore.genome
+            if new:
+                contigs = sorted(set(self._source.data["contig"][i] for i in new))
+            else:
+                contigs = list(genome.contigs)  # no selection means all contigs
+            if set(contigs) == set(self.state.coord.selected_contigs(genome)):
                 return
-            contigs = sorted(set(self._source.data["contig"][i] for i in new))
-            if set(contigs) == set(self.state.coord.spatial.contigs):
-                return
-            self.state.coord.spatial.contigs = contigs
+            self.state.contigs = contigs
 
         except Exception:
             import traceback
@@ -128,13 +126,9 @@ class SummaryPage(pn.viewable.Viewer):
         genome = self.state.datastore.genome
         names = list(genome.contigs)
         lengths = genome.lengths
-        selected = (
-            np.asarray(
-                genome.contig_indices(coord.selected_contigs(genome)), dtype=np.int8
-            )
-            / 2
-            + 0.3
-        )
+        flags = np.zeros(len(names), dtype=np.int8)
+        flags[genome.contig_indices(coord.selected_contigs(genome))] = 1
+        selected = flags / 2 + 0.3
         dflist = []
         for s in self.track.groups("sample_set", coord.column):
             means = self.track.contig_mean_coverage(s)
