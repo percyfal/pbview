@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -54,7 +55,7 @@ def preprocess(
     progress: bool = True,
     chunk_size: int = 1_000_000,
     sampleset_info: Path | str | None = None,
-    missing_cutoff: int = 3,
+    missing_cutoffs: Sequence[int] = (3,),
     preprocess_sum: bool = True,
     preprocess_missingness: bool = True,
 ) -> None:
@@ -75,16 +76,21 @@ def preprocess(
             ds_sum.to_zarr(path, group=f"{track}_sum", mode="w")
 
     if preprocess_missingness:
-        ds_miss = compute_track_missingness(
-            source, membership, missing_cutoff=missing_cutoff
-        )
-        logger.info("Writing track missingness to pbzarr store at %s", path)
-        with show_progress:
-            ds_miss.to_zarr(
-                path,
-                group=f"{track}_missing_cutoff={missing_cutoff}",
-                mode="w",
+        for cutoff in sorted({int(c) for c in missing_cutoffs}):
+            ds_miss = compute_track_missingness(
+                source, membership, missing_cutoff=cutoff
             )
+            logger.info(
+                "Writing track missingness (cutoff %d) to pbzarr store at %s",
+                cutoff,
+                path,
+            )
+            with show_progress:
+                ds_miss.to_zarr(
+                    path,
+                    group=f"{track}_missing_cutoff={cutoff}",
+                    mode="w",
+                )
 
 
 def compute_thresholds(
@@ -97,6 +103,7 @@ def compute_thresholds(
     """Compute default thresholds for sum data"""
     show_progress = ProgressBar() if progress else nullcontext()
     ds = DataStore(path=path)
+    ds.tracks[track_name].require_missingness(missing_cutoff)
 
     defaults = compute_threshold_defaults(ds, track_name)
 

@@ -1,16 +1,17 @@
+import atexit
+import contextlib
+import functools
 import multiprocessing  # noqa
+import sys
 from typing import Callable, Mapping  # noqa
 
-import atexit
-
-import sys
 import click
 import dask
-from dask.distributed import Client, LocalCluster
-import functools
 from click.decorators import FC
+from dask.distributed import Client, LocalCluster
 
 from pbview.logging import app_logger as logger  # noqa
+from pbview.model.track import MissingSummaryError
 
 
 def log_filter_option(expose_value: bool = False) -> Callable[[FC], FC]:
@@ -108,12 +109,34 @@ def use_dask_option(default: bool = False) -> Callable[[FC], FC]:
     )
 
 
-def threshold_option(default: int = 3) -> Callable[[FC], FC]:
+def missing_data_threshold_option(
+    multiple: bool = False,
+    default: int | tuple[int, ...] | None = 3,
+    deprecated_alias: bool = False,
+) -> Callable[[FC], FC]:
+    """Coverage at or below the threshold calls a base missing."""
+    names = ["--missing-data-threshold"]
+    if deprecated_alias:
+        names.append("--threshold")  # old spelling
     return click.option(
-        "--threshold",
+        *names,
+        "missing_data_threshold",
+        type=click.IntRange(min=0),
+        multiple=multiple,
         default=default,
-        help="Coverage threshold for calling a base as present",
+        show_default=default not in (None, ()),
+        help="Coverage at or below this value calls a base missing"
+        + (" (repeatable)" if multiple else ""),
     )
+
+
+@contextlib.contextmanager
+def missing_summary_errors():
+    """Report a missing summary track as a clean command line error."""
+    try:
+        yield
+    except MissingSummaryError as e:
+        raise click.ClickException(str(e)) from e
 
 
 def dask_port_option(default: int = 18786) -> Callable[[FC], FC]:

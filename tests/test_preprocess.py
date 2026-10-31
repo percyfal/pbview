@@ -1,9 +1,11 @@
+import _helpers
 import numpy as np
 import pytest
 
 from pbview import config
 from pbview.model.datastore import DataStore
 from pbview.model.grouping import IDENTITY_DIM, grouping_hash
+from pbview.model.track import MissingSummaryError
 from pbview.preprocess import preprocess as preprocess_mod
 from pbview.preprocess.track import compute_track_missingness, compute_track_sum
 
@@ -105,8 +107,34 @@ def test_preprocess_summaries_are_discoverable(make_datastore_path, tmp_path):
     info = tmp_path / "sets.tsv"
     info.write_text(SAMPLESET_INFO)
     preprocess_mod.preprocess(
-        path, progress=False, sampleset_info=info, missing_cutoff=4
+        path, progress=False, sampleset_info=info, missing_cutoffs=(4,)
     )
     summaries = DataStore(path).summaries_of("depth")
     assert summaries.sum.name == "depth_sum"
     assert list(summaries.missingness) == [4]
+
+
+def test_preprocess_several_missingness_cutoffs(make_datastore_path, tmp_path):
+    path = make_datastore_path()
+    info = tmp_path / "sets.tsv"
+    info.write_text(SAMPLESET_INFO)
+    preprocess_mod.preprocess(
+        path, progress=False, sampleset_info=info, missing_cutoffs=(5, 3, 5)
+    )
+    summaries = DataStore(path).summaries_of("depth")
+    assert sorted(summaries.missingness) == [3, 5]
+    assert summaries.missingness[5].name == "depth_missing_cutoff=5"
+    raw = _helpers.tiny_datatree()["depth"]["values"].values  # (position, sample)
+    for cutoff in (3, 5):
+        column = summaries.missingness[cutoff].column("ALL").values
+        np.testing.assert_array_equal(column, (raw <= cutoff).sum(axis=1))
+
+
+def test_compute_thresholds_requires_the_missingness_cutoff(
+    make_datastore_path, sample_sets
+):
+    path = make_datastore_path(
+        with_sum=True, with_missing=True, sample_sets=sample_sets
+    )
+    with pytest.raises(MissingSummaryError, match=r"cutoff 9 \(available: \[3\]\)"):
+        preprocess_mod.compute_thresholds(path, progress=False, missing_cutoff=9)

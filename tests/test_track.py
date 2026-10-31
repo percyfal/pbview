@@ -13,7 +13,13 @@ from pbview.model.coordinates import (
     ResolvedSelection,
 )
 from pbview.model.grouping import IDENTITY_DIM, ensure_all_set
-from pbview.model.track import Summaries, Track, _isel_intervals, resolve_columns
+from pbview.model.track import (
+    MissingSummaryError,
+    Summaries,
+    Track,
+    _isel_intervals,
+    resolve_columns,
+)
 
 N = 24
 
@@ -610,3 +616,10 @@ def test_coverage_hist_summary_and_raw_paths(track, coord, genome):
     np.testing.assert_array_equal(
         track.coverage_hist(bins=bins, resolved=odd)[0], expected([3, 4, 5])
     )
+
+
+def test_require_missingness(full_ds):
+    track = full_ds.tracks["depth"]
+    assert track.require_missingness(3) is full_ds.tracks["depth_missing_cutoff=3"]
+    with pytest.raises(MissingSummaryError, match=r"cutoff 7 \(available: \[3\]\)"):
+        track.require_missingness(7)
