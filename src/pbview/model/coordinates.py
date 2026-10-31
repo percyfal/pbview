@@ -1,5 +1,14 @@
 """
-Coordinates class and helper functions.
+Selection values and the universes they are resolved against.
+
+`SpatialSelection` and `ColumnSelection` are pure, hashable values: `None`
+means "no filter" (the whole universe) and an empty tuple means "nothing".
+A `Coordinates` combines one spatial selection with at most one column
+selection per column dimension. `Coordinates.resolve_for(track, genome)`
+resolves it against a `Genome` and a `Track` into a `ResolvedSelection` with
+explicit intervals and labels, which `Track.select` applies to the data.
+Validation (unknown contigs or labels) happens when a selection is
+resolved, never at construction.
 """
 
 from __future__ import annotations
@@ -35,7 +44,16 @@ def resolve_columns(
     universe: Sequence[str],
     groupings: Mapping[str, xr.DataArray] = MappingProxyType({}),
 ) -> tuple[str, ...]:
-    """Labels of `colum_dim` selected by `selections` in universe order"""
+    """Labels of `column_dim` selected by `selections`, in universe order.
+
+    Selections on different dimensions intersect. A selection on the
+    track's own column dimension picks labels directly; one on a dimension
+    with a grouping (for example `sample_set` on a `sample` track) picks
+    every column that belongs to any selected group. A selection that does
+    not apply to the track is skipped, except for the projection pairs in
+    `_PROJECTIONS`, where a missing grouping is an error. Unknown labels
+    raise a `ValueError`.
+    """
     constraints: list[set[str]] = []
     for sel in selections:
         if sel.labels is None:
@@ -158,6 +176,12 @@ def _merge_adjacent(
 
 @dataclass(frozen=True)
 class Genome:
+    """Contigs and their offsets (CSR style, `len(contigs) + 1` entries).
+
+    Maps contig selections to global position intervals. It holds tuples
+    only, so it is hashable and can key `lru_cache`.
+    """
+
     contigs: tuple[str, ...]
     offsets: tuple[int, ...]
 
@@ -273,6 +297,12 @@ class PositionIntervals:
 
 @dataclass(frozen=True)
 class ResolvedSelection:
+    """A selection resolved for one track and genome: explicit and hashable.
+
+    `labels` are the selected columns of the track's column dimension in
+    track order. An empty tuple means no columns, never "all".
+    """
+
     intervals: PositionIntervals
     column_dim: str
     labels: tuple[str, ...]  # explicit; empty means empty

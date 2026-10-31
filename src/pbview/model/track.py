@@ -73,8 +73,11 @@ def select_data(
 class Summaries:
     """Summary tracks computed from a base track.
 
-    Found through `perbase:source_track` and `perbase:provenance`,
-    never by name.
+    Recognised by their attrs, never by name: `perbase:source_track`,
+    `perbase:provenance` (`config.SUMMARY_SUM`, `config.SUMMARY_MISSINGNESS`)
+    and, for missingness, `perbase:missing_cutoff`. Stores preprocessed
+    before these attrs existed have no summaries until `pbview preprocess`
+    is run again.
     """
 
     sum: Track | None = None

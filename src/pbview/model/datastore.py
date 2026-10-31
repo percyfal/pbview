@@ -74,8 +74,8 @@ class NpEncoder(json.JSONEncoder):
 def _base_track_name(store) -> str:
     """First track, in sorted order, with a `sample` column dimension.
 
-    SHIM REFACTOR(datastore): the store-level universe goes away with
-    Coordinates.datastore.
+    FIXME(pbzarr>0.6): the coordinates will live in the root group, which
+    removes the need to pick a base track for the store-level universe.
     """
     names = sorted(store.keys())
     return next((n for n in names if "sample" in store[n].coords), names[0])
@@ -191,11 +191,7 @@ class DataStore:
 
     @functools.cached_property
     def _sample_set_grouping(self) -> xr.DataArray | None:
-        """Store `sample_set` grouping of the base track, if any.
-
-        SHIM REFACTOR(datastore): store-level view of the sample sets;
-        goes away when Coordinates resolves sets through the tracks
-        """
+        """Stored `sample_set` grouping of the base track, if any."""
         return self.tracks[self._active_track].groupings.get("sample_set")
 
     @functools.cached_property
