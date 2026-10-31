@@ -51,6 +51,9 @@ MAX_COVERAGE_BIN: int = int(os.environ.get("PBVIEW_MAX_COVERAGE_BIN", 100_000))
 MAX_COVERAGE_PER_SAMPLE: int = int(
     os.environ.get("PBVIEW_MAX_COVERAGE_PER_SAMPLE", 100)
 )
+# Threshold defaults are estimated from at most this many evenly spaced
+# positions (0: use all positions)
+MAX_POSITIONS: int = int(os.environ.get("PBVIEW_MAX_POSITIONS", 50_000_000))
 
 
 # FIXME (pbzarr>0.6): the spatial dimensions will be accessible from

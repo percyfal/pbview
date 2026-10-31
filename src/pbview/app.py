@@ -47,7 +47,7 @@ def serve(servable, **kw):
     logger.info("Serving main app")
 
     ds = DataStore(path=kw.pop("path", None))
-    dsview = DataStoreView(datastore=ds)
+    dsview = DataStoreView(datastore=ds, max_positions=kw.pop("max_positions", None))
     app_ = App(datastoreview=dsview)
 
     if servable:

@@ -1,10 +1,14 @@
+from types import SimpleNamespace
+
 import _helpers
 import numpy as np
+import pandas as pd
 import pytest
 
 from pbview import config
 from pbview.model.datastore import DataStore
 from pbview.model.grouping import IDENTITY_DIM, grouping_hash
+from pbview.model.histogram import compute_threshold_defaults
 from pbview.model.thresholds import SampleSetThresholds, ThresholdProfile
 from pbview.model.track import MissingSummaryError
 from pbview.preprocess import preprocess as preprocess_mod
@@ -167,3 +171,28 @@ def test_compute_thresholds_writes_nothing_without_the_cutoff(
             path, progress=False, missing_cutoff=9, output=output
         )
     assert not output.exists()
+
+
+@pytest.mark.parametrize(("max_positions", "stride"), [(0, 1), (5, 5)])
+def test_compute_thresholds_table_is_scaled_to_the_genome(
+    make_datastore_path, sample_sets, monkeypatch, max_positions, stride
+):
+    path = make_datastore_path(
+        with_sum=True, with_missing=True, sample_sets=sample_sets
+    )
+    frames = []
+
+    def record(*args, **kwargs):  # the table, as printed by compute_thresholds
+        frames.append(pd.DataFrame(*args, **kwargs))
+        return frames[-1]
+
+    monkeypatch.setattr(preprocess_mod, "pd", SimpleNamespace(DataFrame=record))
+    preprocess_mod.compute_thresholds(path, progress=False, max_positions=max_positions)
+    ds = DataStore(path)
+    defaults = compute_threshold_defaults(ds, "depth", max_positions=max_positions)
+    for row in frames[0].itertuples():
+        sums = ds.tracks["depth"].summaries.sum.column(row.sample_set).values
+        sample = np.minimum(sums[::stride], defaults[f"maxbins_{row.sample_set}"])
+        n = np.count_nonzero((sample >= row.lower) & (sample <= row.upper))
+        assert row.accessible_bp == round(n * len(sums) / len(sample))
+        assert row.frac_active_genome == row.accessible_bp / len(sums)

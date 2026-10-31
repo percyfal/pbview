@@ -32,9 +32,11 @@ class DataStoreView(Viewer):
 
     active_page = param.Selector()
 
-    def __init__(self, datastore, active_track="depth", **params):
+    def __init__(self, datastore, active_track="depth", max_positions=None, **params):
         super().__init__(**params)
-        defaults = compute_threshold_defaults(datastore, active_track)
+        defaults = compute_threshold_defaults(
+            datastore, active_track, max_positions=max_positions
+        )
         self.state = build_selection_state(datastore, active_track, defaults)
         self.title = str(datastore.title)
         self.cv = CoordinatesView(state=self.state)

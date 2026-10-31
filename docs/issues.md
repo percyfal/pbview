@@ -37,6 +37,12 @@
 
 ## Other
 
+- [ ] only the threshold defaults can be estimated from a subset of
+      positions (`--max-positions`); `contig_mean_coverage`, the
+      per-selection histograms and `missingness_hist` still read the
+      whole genome, and `sum_hist` reads the store once per sample set
+      (one pass for all sets would be about twice as fast)
+
 - [x] coverage above `PBVIEW_MAX_COVERAGE_PER_SAMPLE` per sample is
       clipped into the last bin of `Track.sum_hist` (and of
       `coverage_hist` at `maxbins`), with a log warning; the warning

@@ -153,7 +153,11 @@ repeatable on `preprocess missingness|all` (one `<track>_missing_cutoff=<N>`
 summary per value) and on `mask generate`, where masks for several
 cutoffs carry a `missing_cutoff` dimension that `mask export` selects on.
 `preprocess thresholds -o` writes the app's default thresholds as a
-threshold file for `mask generate`.
+threshold file for `mask generate`. `--max-positions` (also on `serve`;
+default `config.MAX_POSITIONS`, 0 = all) limits the positions the
+default thresholds are estimated from: `Track.sum_hist` counts every
+k-th position, which saves the counting but not the reads, since every
+chunk is still read. `mask generate` is always exact.
 
 ## Testing
 

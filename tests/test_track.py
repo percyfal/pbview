@@ -578,6 +578,21 @@ def test_sum_hist_clips_at_the_cap(track, monkeypatch):
     assert np.array_equal(hist[:cap], np.bincount(sums)[:cap])
 
 
+@pytest.mark.parametrize("max_positions", [0, 24, 100])
+def test_sum_hist_is_exact_unless_there_are_more_positions(track, max_positions):
+    sums = track.summaries.sum.column("ALL").values
+    assert np.array_equal(track.sum_hist("ALL", 7, max_positions), np.bincount(sums))
+
+
+def test_sum_hist_counts_every_kth_position(track):
+    sums = track.summaries.sum.column("ALL").values  # 24 positions
+    hist = track.sum_hist("ALL", 7, 5)  # every 5th: 0, 5, 10, 15, 20
+    assert hist.sum() == 5
+    assert np.array_equal(hist, np.bincount(sums[::5]))
+    hist = track.sum_hist("ALL", 7, 23)  # every 2nd: 12 positions
+    assert np.array_equal(hist, np.bincount(sums[::2]))
+
+
 def test_sum_hist_requires_summary(raw_ds):
     with pytest.raises(ValueError, match="no sum summary"):
         raw_ds.tracks["depth"].sum_hist("ALL", 7)

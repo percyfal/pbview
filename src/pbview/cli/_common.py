@@ -10,6 +10,7 @@ import dask
 from click.decorators import FC
 from dask.distributed import Client, LocalCluster
 
+from pbview import config
 from pbview.logging import app_logger as logger  # noqa
 from pbview.model.track import MissingSummaryError
 
@@ -137,6 +138,20 @@ def missing_summary_errors():
         yield
     except MissingSummaryError as e:
         raise click.ClickException(str(e)) from e
+
+
+def max_positions_option(default: int | None = None) -> Callable[[FC], FC]:
+    """Cap on the positions used to estimate the threshold defaults."""
+    return click.option(
+        "--max-positions",
+        type=click.IntRange(min=0),
+        default=default,
+        show_default=f"{config.MAX_POSITIONS:,}" if default is None else True,
+        help=(
+            "Estimate the default thresholds from at most this many evenly "
+            "spaced positions; 0 uses all positions. Env: PBVIEW_MAX_POSITIONS"
+        ),
+    )
 
 
 def dask_port_option(default: int = 18786) -> Callable[[FC], FC]:

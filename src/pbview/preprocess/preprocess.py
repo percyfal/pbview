@@ -7,6 +7,7 @@ import pandas as pd
 import xarray as xr
 from dask.diagnostics import ProgressBar
 
+from pbview import config
 from pbview.logging import app_logger as logger
 from pbview.model.coordinates import Coordinates
 from pbview.model.datastore import DataStore
@@ -15,7 +16,7 @@ from pbview.model.grouping import (
     read_sampleset_info,
     write_column_groupings,
 )
-from pbview.model.histogram import compute_threshold_defaults, hist_stats
+from pbview.model.histogram import compute_threshold_defaults, fold_hist, hist_stats
 from pbview.model.thresholds import profile_from_defaults
 from pbview.model.track import Track
 
@@ -101,16 +102,23 @@ def compute_thresholds(
     chunk_size: int = 1_000_000,
     missing_cutoff: int = 3,
     output: Path | str | None = None,
+    max_positions: int | None = None,
 ) -> None:
     """Compute default thresholds for sum data.
 
     With `output`, also write them as a threshold file for `mask generate`.
+    With more than `max_positions` positions (default
+    `config.MAX_POSITIONS`; 0 uses all) the thresholds and the table
+    are estimated from evenly spaced positions; `accessible_bp` is then
+    scaled up to the genome size.
     """
+    if max_positions is None:
+        max_positions = config.MAX_POSITIONS
     show_progress = ProgressBar() if progress else nullcontext()
     ds = DataStore(path=path)
     ds.tracks[track_name].require_missingness(missing_cutoff)
 
-    defaults = compute_threshold_defaults(ds, track_name)
+    defaults = compute_threshold_defaults(ds, track_name, max_positions=max_positions)
 
     track = ds.tracks[track_name]
     coord = Coordinates()
@@ -127,11 +135,13 @@ def compute_thresholds(
             maxbins = defaults[f"maxbins_{ss}"]
             bins = np.arange(maxbins + 1)
 
-            counts, bins = track.coverage_hist(bins=bins, resolved=resolved)
+            hist = track.sum_hist(ss, n_samples, max_positions)
+            counts = fold_hist(hist, maxbins + 1)  # as coverage_hist(bins)
+            scale = ds.genome.size / hist.sum()  # 1 unless sampled
             lo, up = defaults[f"lower_coverage_{ss}"], defaults[f"upper_coverage_{ss}"]
             stats = hist_stats(counts, bins)
             mask = (bins >= lo / n) & (bins <= up / n)
-            accessible = int(counts[mask].sum())
+            accessible = int(round(counts[mask].sum() * scale))
             genome = ds.genome
             rows.append(
                 {
