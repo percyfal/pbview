@@ -1,3 +1,4 @@
+import dask
 import numpy as np
 import pytest
 
@@ -8,6 +9,7 @@ from pbview.model.histogram import (
     fold_hist,
     hist_quantile,
     hist_stats,
+    sample_set_hists,
 )
 
 
@@ -79,3 +81,15 @@ def test_defaults_max_positions_comes_from_the_config(full_ds, monkeypatch):
     estimate = compute_threshold_defaults(full_ds, "depth")
     assert estimate == compute_threshold_defaults(full_ds, "depth", max_positions=5)
     assert estimate != exact
+
+
+def test_threshold_defaults_and_the_table_share_one_read(full_ds, monkeypatch):
+    calls = []
+    real = dask.compute
+    monkeypatch.setattr(
+        dask, "compute", lambda *a, **k: calls.append(len(a)) or real(*a, **k)
+    )
+    compute_threshold_defaults(full_ds, "depth", max_positions=5)
+    hists = sample_set_hists(full_ds, "depth", 5)  # as compute_thresholds does
+    assert calls == [4]  # four sample sets, one pass
+    assert list(hists) == ["ALL", "pop1", "pop2", "pop3"]

@@ -1,6 +1,7 @@
 import dataclasses
 
 import _helpers
+import dask
 import numpy as np
 import pytest
 import xarray as xr
@@ -591,6 +592,50 @@ def test_sum_hist_counts_every_kth_position(track):
     assert np.array_equal(hist, np.bincount(sums[::5]))
     hist = track.sum_hist("ALL", 7, 23)  # every 2nd: 12 positions
     assert np.array_equal(hist, np.bincount(sums[::2]))
+
+
+SETS = ("ALL", "pop1", "pop2", "pop3")
+SIZES = (7, 3, 2, 2)
+
+
+@pytest.mark.parametrize(("max_positions", "stride"), [(0, 1), (5, 5), (23, 2)])
+def test_sum_hists_equal_the_histograms_of_each_set(track, max_positions, stride):
+    hists = track.sum_hists(SETS, SIZES, max_positions)
+    assert list(hists) == list(SETS)
+    for s, n in zip(SETS, SIZES):
+        sums = track.summaries.sum.column(s).values
+        assert np.array_equal(hists[s], np.bincount(sums[::stride]))
+        assert np.array_equal(hists[s], track.sum_hist(s, n, max_positions))
+
+
+def test_sum_hists_read_the_data_once(track, monkeypatch):
+    calls = []
+    real = dask.compute
+
+    def counting(*args, **kwargs):
+        calls.append(len(args))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(dask, "compute", counting)
+    track.sum_hists(SETS, SIZES)
+    assert calls == [len(SETS)]  # one compute for all sets
+    track.sum_hists(SETS, SIZES)
+    assert calls == [len(SETS)]  # and cached
+
+
+def test_sum_hists_clip_each_set_at_its_own_cap(track, monkeypatch):
+    monkeypatch.setattr(config, "MAX_COVERAGE_PER_SAMPLE", 1)
+    hists = track.sum_hists(SETS, SIZES)
+    for s, cap in zip(SETS, SIZES):
+        sums = track.summaries.sum.column(s).values
+        assert len(hists[s]) <= cap + 1
+        assert hists[s][-1] == (sums >= len(hists[s]) - 1).sum()
+        assert hists[s].sum() == len(sums)
+
+
+def test_sum_hists_need_one_size_per_set(track):
+    with pytest.raises(ValueError, match="same length"):
+        track.sum_hists(SETS, SIZES[:2])
 
 
 def test_sum_hist_requires_summary(raw_ds):

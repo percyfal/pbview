@@ -121,6 +121,28 @@ def fold_hist(hist, n_bins: int) -> np.ndarray:
     return out
 
 
+def sample_set_hists(
+    datastore: "DataStore", track_name: str, max_positions: int
+) -> dict[str, np.ndarray]:
+    """`Track.sum_hists` for every sample set of a track, read in one pass.
+
+    The result is cached on the track, so asking again for the same
+    `max_positions` does not read the data again.
+    """
+    track = datastore.tracks[track_name]
+    sets = tuple(track.groups("sample_set"))
+    n_samples = tuple(
+        len(
+            Coordinates()
+            .with_sample_sets([s])
+            .resolve_for(track, datastore.genome)
+            .labels
+        )
+        for s in sets
+    )
+    return track.sum_hists(sets, n_samples, max_positions)
+
+
 def compute_threshold_defaults(
     datastore: "DataStore",
     active_track: str,
@@ -137,7 +159,7 @@ def compute_threshold_defaults(
     across the entire genome and may therefore not be representative
     of the actual coverage distribution in a given region.
 
-    The genome is read once per sample set (`Track.sum_hist`); the
+    The genome is read once for all sample sets (`Track.sum_hists`); the
     histogram clipped at `max_bin` that gives `upper` is derived from it.
 
     With more than `max_positions` positions (default
@@ -147,11 +169,7 @@ def compute_threshold_defaults(
     if max_positions is None:
         max_positions = config.MAX_POSITIONS
     result = {}
-    track = datastore.tracks[active_track]
-    for s in track.groups("sample_set"):
-        coord = Coordinates().with_sample_sets([s])
-        resolved = coord.resolve_for(track, datastore.genome)
-        h = track.sum_hist(s, len(resolved.labels), max_positions)
+    for s, h in sample_set_hists(datastore, active_track, max_positions).items():
         stats = hist_stats(h)
         lo = int(0.6 * stats["mean"])
         mb = int(hist_quantile(h, max_bin_q) * max_bin_headroom)
