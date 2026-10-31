@@ -529,19 +529,133 @@ class Track:
                 h = self.sum_hists(sets, sizes, max_positions, resolved.intervals)[name]
                 counts = fold_hist(h, max_bin + 1)
                 return _scaled(counts, n_total, int(h.sum())), bins
-            sums = _isel_intervals(summary.column(name), resolved.intervals)
+            data = _isel_intervals(summary.column(name), resolved.intervals).data
+            stride = sample_stride(n_total, max_positions)
+            if stride > 1:
+                data = data[::stride]
+            graph = da.bincount(da.minimum(data, max_bin), minlength=max_bin + 1)
+            n_counted = data.shape[0]
         else:
-            # Raw path
-            arr = select_data(self._hist_view, resolved)["values"]
-            sums = arr.sum(self.column_dim).astype(np.int32)
-        data = sums.data
+            graph, n_counted = self._raw_graph(
+                self._hist_view, resolved, max_bin, max_positions
+            )
+        with ProgressBar():
+            counts = graph.compute()
+        return _scaled(counts, n_total, n_counted), bins
+
+    def _raw_graph(
+        self,
+        view: xr.Dataset,
+        resolved: ResolvedSelection,
+        max_bin: int,
+        max_positions: int,
+        missing_cutoff: int | None = None,
+    ) -> tuple[da.Array, int]:
+        """Histogram graph over the raw values of a selection, and positions counted.
+
+        The sum of the selected columns, or with `missing_cutoff` the number
+        of them at or below it, clipped to `max_bin`.
+        """
+        arr = select_data(view, resolved)["values"]
+        n_total = resolved.intervals.n_positions
         stride = sample_stride(n_total, max_positions)
         if stride > 1:
-            data = data[::stride]
-        hist = da.bincount(da.minimum(data, max_bin), minlength=max_bin + 1)
+            # before the reduction: every sample of the skipped positions
+            # is then never summed
+            arr = arr.isel(position=slice(None, None, stride))
+        if missing_cutoff is None:
+            per_position = arr.sum(self.column_dim).astype(np.int32)
+        else:
+            per_position = (arr <= missing_cutoff).astype(np.int32).sum(self.column_dim)
+        data = per_position.data
+        graph = da.bincount(da.minimum(data, max_bin), minlength=max_bin + 1)
+        return graph, data.shape[0]
+
+    @lru_cache(maxsize=16)
+    def _raw_hists(
+        self,
+        requests: tuple[tuple[str, tuple[int, ...], ResolvedSelection], ...],
+        missing_cutoff: int | None,
+        max_positions: int,
+    ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+        """Histograms of several selections of the raw values in one pass."""
+        view = self._hist_view  # one view, so the requests share its chunk reads
+        graphs, counted = [], []
+        for _, bins, resolved in requests:
+            graph, n = self._raw_graph(
+                view, resolved, bins[-1], max_positions, missing_cutoff
+            )
+            graphs.append(graph)
+            counted.append(n)
         with ProgressBar():
-            counts = hist.compute()
-        return _scaled(counts, n_total, data.shape[0]), bins
+            hists = dask.compute(*graphs)
+        return {
+            name: (
+                _scaled(h, resolved.intervals.n_positions, n),
+                np.asarray(bins),
+            )
+            for (name, bins, resolved), h, n in zip(requests, hists, counted)
+        }
+
+    def _hists_of(
+        self,
+        selections: Mapping[str, ResolvedSelection],
+        bins: Mapping[str, npt.NDArray[int]] | None,
+        missing_cutoff: int | None,
+        max_positions: int,
+    ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+        precomputed = (
+            self.summaries.sum
+            if missing_cutoff is None
+            else self.summaries.missingness.get(missing_cutoff)
+        )
+        result, raw = {}, []
+        for name, resolved in selections.items():
+            sample_bins = (
+                bins[name] if bins is not None else np.arange(len(resolved.labels) + 1)
+            )
+            group = self._matching_group_of(resolved.labels, "sample_set")
+            if group is not None and precomputed is not None:
+                if missing_cutoff is None:
+                    result[name] = self.coverage_hist(
+                        sample_bins, resolved, max_positions
+                    )
+                else:
+                    result[name] = self.missingness_hist(
+                        resolved, missing_cutoff, max_positions
+                    )
+            else:
+                raw.append((name, tuple(sample_bins.tolist()), resolved))
+        if raw:
+            result.update(self._raw_hists(tuple(raw), missing_cutoff, max_positions))
+        return {name: result[name] for name in selections}
+
+    def coverage_hist_many(
+        self,
+        selections: Mapping[str, ResolvedSelection],
+        bins: Mapping[str, npt.NDArray[int]],
+        max_positions: int = 0,
+    ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+        """`coverage_hist` of several named selections.
+
+        Selections that are exactly one sample set use the precomputed
+        summary (all sets in one pass, see `sum_hists`). The others sum
+        the raw values, and these are computed together in one pass over
+        the raw data instead of one per selection.
+
+        Returns:
+            {name: (histogram, bins)}
+        """
+        return self._hists_of(selections, bins, None, max_positions)
+
+    def missingness_hist_many(
+        self,
+        selections: Mapping[str, ResolvedSelection],
+        missing_cutoff: int = 0,
+        max_positions: int = 0,
+    ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+        """`missingness_hist` of several named selections, as `coverage_hist_many`."""
+        return self._hists_of(selections, None, missing_cutoff, max_positions)
 
     def coverage_hist(
         self,
@@ -590,17 +704,12 @@ class Track:
                 missing_cutoff, sets, sizes, max_positions, resolved.intervals
             )[name]
             return _scaled(fold_hist(h, len(bins)), n_total, int(h.sum())), bins
-        # Raw path
-        arr = select_data(self._hist_view, resolved)["values"]
-        data = (arr <= missing_cutoff).astype(np.int32).sum(self.column_dim).data
-        stride = sample_stride(n_total, max_positions)
-        if stride > 1:
-            data = data[::stride]
-        max_bin = int(bins[-1])
-        hist = da.bincount(da.minimum(data, max_bin), minlength=max_bin + 1)
+        graph, n_counted = self._raw_graph(
+            self._hist_view, resolved, int(bins[-1]), max_positions, missing_cutoff
+        )
         with ProgressBar():
-            counts = hist.compute()
-        return _scaled(counts, n_total, data.shape[0]), bins
+            counts = graph.compute()
+        return _scaled(counts, n_total, n_counted), bins
 
     def missingness_hist(
         self,

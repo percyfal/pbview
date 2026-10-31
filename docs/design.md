@@ -161,8 +161,10 @@ thresholds and the coverage and missingness pages are estimated from:
 cached per selection) count every k-th selected position and the page
 histograms are scaled up to the selection, with a note on the page.
 Sampling saves the counting but not the reads, since every chunk is
-still read; reading once for all sets is what saves most. Per-contig
-means are exact. `mask generate` is always exact.
+still read; reading once for all sets is what saves most. A sample
+selection that is not exactly one set sums the raw values: those sets
+are read in one pass and sampled before the sum, but remain much slower
+than the summary path. Per-contig means are exact. `mask generate` is always exact.
 
 ## Testing
 
