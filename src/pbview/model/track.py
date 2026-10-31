@@ -286,21 +286,26 @@ class Track:
 
     @lru_cache(maxsize=None)
     def sum_hist(self, sample_set: str, n_samples: int) -> np.ndarray:
-        """Histogram over the genome of the summed coverage of a sample set."""
-        max_coverage_bin = min(
-            n_samples * config.MAX_COVERAGE_PER_SAMPLE, config.MAX_COVERAGE_BIN
-        )
+        """Histogram over the genome of the summed coverage of a sample set.
+
+        One pass over the data. Sums above the cap
+        (`n_samples * PBVIEW_MAX_COVERAGE_PER_SAMPLE`, at most
+        `PBVIEW_MAX_COVERAGE_BIN`) are clipped into the last bin, which is
+        then the cap itself. Trailing empty bins are dropped, so the length
+        is the largest observed (clipped) sum plus one.
+        """
+        cap = min(n_samples * config.MAX_COVERAGE_PER_SAMPLE, config.MAX_COVERAGE_BIN)
         sums = self._require_sum().column(sample_set).data
-        approx_max = int(sums.max().compute())
-        if approx_max > max_coverage_bin:
+        hist = da.bincount(da.minimum(sums, cap), minlength=cap + 1).compute()
+        if len(hist) > cap and hist[cap] > 0:
             logger.warning(
-                "Coverage sum histogram exceeds configured maximum (%d > %d). "
-                "Truncating to max coverage bin.",
-                approx_max,
-                max_coverage_bin,
+                "%d positions have summed coverage >= the configured maximum "
+                "(%d); they are counted in the last bin.",
+                int(hist[cap]),
+                cap,
             )
-            approx_max = max_coverage_bin
-        return da.bincount(sums, minlength=approx_max + 1).compute()
+        nonzero = np.flatnonzero(hist)
+        return hist[: nonzero[-1] + 1] if len(nonzero) else hist[:1]
 
     @lru_cache(maxsize=None)
     def contig_mean_coverage(self, sample_set: str) -> np.ndarray:
