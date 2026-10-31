@@ -6,11 +6,15 @@ __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-17"
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 from pbview import config
 from pbview.model.coordinates import Coordinates
-from pbview.model.datastore import DataStore
+
+if TYPE_CHECKING:  # track.py imports this module
+    from pbview.model.datastore import DataStore
 
 
 def hist_stats(hist, values=None) -> dict:

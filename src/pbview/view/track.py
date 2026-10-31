@@ -23,11 +23,23 @@ from panel.viewable import Viewer
 from pbview import config
 from pbview.model.histogram import hist_stats
 from pbview.model.selection import SelectionStateBase
-from pbview.model.track import Track
+from pbview.model.track import Track, sample_stride
 
 from .plots import hist_boxplot
 
 pn.extension("tabulator")
+
+
+def estimate_note(coord, state: SelectionStateBase, track: Track, max_positions: int):
+    """Markdown note that says when histograms are estimated, else empty."""
+    n = coord.resolve_for(track, state.datastore.genome).intervals.n_positions
+    stride = sample_stride(n, max_positions)
+    if stride == 1:
+        return pn.pane.Markdown("")
+    return pn.pane.Markdown(
+        f"*Estimated from every {stride}th of {n:,} selected positions "
+        f"(`--max-positions {max_positions:,}`); `--max-positions 0` uses all.*"
+    )
 
 
 class TrackIndicatorTableBase(Viewer):
@@ -267,6 +279,9 @@ class TrackCoveragePage(Viewer):
     by_sample = param.Boolean(default=False, doc="Normalize coverages by sample size")
     maxbins = param.Integer(default=100)
     maxbins_default = param.Dict(default={})
+    max_positions = param.Integer(
+        default=0, bounds=(0, None), doc="Most positions to count; 0 counts all"
+    )
 
     def __init__(self, **params):
         super().__init__(**params)
@@ -311,8 +326,19 @@ class TrackCoveragePage(Viewer):
             self.param.active_sets, inline=True
         )
         plot_grid = pn.bind(self._render_plots, self.param.active_sets)
+        note = pn.bind(
+            estimate_note,
+            self.state.param.coord,
+            state=self.state,
+            track=self.track,
+            max_positions=self.max_positions,
+        )
         return pn.Column(
-            pn.Row(chooser, self.param.by_sample), self._table, self._boxplot, plot_grid
+            pn.Row(chooser, self.param.by_sample),
+            note,
+            self._table,
+            self._boxplot,
+            plot_grid,
         )
 
     def _compute_hist(self, maxbins, coord, sample_set, by_sample):
@@ -320,7 +346,9 @@ class TrackCoveragePage(Viewer):
         resolved = coord.with_sample_sets([sample_set]).resolve_for(
             self.track, self.state.datastore.genome
         )
-        counts, bins = self.track.coverage_hist(bins=bins, resolved=resolved)
+        counts, bins = self.track.coverage_hist(
+            bins=bins, resolved=resolved, max_positions=self.max_positions
+        )
         if by_sample:
             bins = bins / len(resolved.labels)
         return counts, bins
@@ -353,6 +381,9 @@ class TrackMissingnessPage(Viewer):
     track = param.ClassSelector(class_=Track, is_instance=True)
     state = param.ClassSelector(class_=SelectionStateBase, is_instance=True)
     active_sets = param.ListSelector(default=[], objects=[])  # populated in __init__
+    max_positions = param.Integer(
+        default=0, bounds=(0, None), doc="Most positions to count; 0 counts all"
+    )
 
     def __init__(self, **params):
         super().__init__(**params)
@@ -387,7 +418,9 @@ class TrackMissingnessPage(Viewer):
             self.track, self.state.datastore.genome
         )
         return self.track.missingness_hist(
-            resolved=resolved, missing_cutoff=missing_cutoff
+            resolved=resolved,
+            missing_cutoff=missing_cutoff,
+            max_positions=self.max_positions,
         )
 
     def _render_plots(self, active):
@@ -399,8 +432,18 @@ class TrackMissingnessPage(Viewer):
             self.param.active_sets, inline=True
         )
         plot_grid = pn.bind(self._render_plots, self.param.active_sets)
+        note = pn.bind(
+            estimate_note,
+            self.state.param.coord,
+            state=self.state,
+            track=self.track,
+            max_positions=self.max_positions,
+        )
         return pn.Column(
-            pn.Row(chooser, self.state.param.missing_cutoff), self._table, plot_grid
+            pn.Row(chooser, self.state.param.missing_cutoff),
+            note,
+            self._table,
+            plot_grid,
         )
 
     @property

@@ -34,6 +34,9 @@ class DataStoreView(Viewer):
 
     def __init__(self, datastore, active_track="depth", max_positions=None, **params):
         super().__init__(**params)
+        if max_positions is None:
+            max_positions = config.MAX_POSITIONS
+        self.max_positions = max_positions
         defaults = compute_threshold_defaults(
             datastore, active_track, max_positions=max_positions
         )
@@ -46,6 +49,7 @@ class DataStoreView(Viewer):
             "Coverage": TrackCoveragePage(
                 track=self.state.track(),
                 state=self.state,
+                max_positions=max_positions,
                 maxbins_default={
                     s: defaults[f"maxbins_{s}"]
                     for s in self.state.track().groups(
@@ -54,7 +58,9 @@ class DataStoreView(Viewer):
                 },
             ),
             "Missingness": TrackMissingnessPage(
-                track=self.state.track(), state=self.state
+                track=self.state.track(),
+                state=self.state,
+                max_positions=max_positions,
             ),
         }
         self.pages["Summary"] = SummaryPage(

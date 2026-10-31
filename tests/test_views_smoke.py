@@ -1,10 +1,12 @@
 import pytest
 
+from pbview import config
 from pbview.model.coordinates import Coordinates
 from pbview.model.histogram import compute_threshold_defaults
 from pbview.model.thresholds import profile_from_defaults, profile_from_state
 from pbview.view.coordinates import selection_overview
 from pbview.view.datastore import DataStoreView
+from pbview.view.track import estimate_note
 
 SETS = ["ALL", "pop1", "pop2", "pop3"]
 
@@ -94,3 +96,25 @@ def test_app_defaults_honour_max_positions(full_ds):
         full_ds.tracks["depth"], defaults, full_ds.id, missing_cutoff=3
     )
     assert profile_from_state(dsv.state, full_ds.id) == expected
+
+
+def test_pages_estimate_when_there_are_more_positions_than_max_positions(full_ds):
+    dsv = DataStoreView(full_ds, max_positions=5)  # 24 positions, every 5th
+    assert dsv.pages["Coverage"].max_positions == 5
+    assert dsv.pages["Missingness"].max_positions == 5
+    for page in (dsv.pages["Coverage"], dsv.pages["Missingness"]):
+        for rx in page._hist_rx.values():
+            counts, _ = rx.rx.value
+            assert abs(counts.sum() - 24) <= 5  # scaled up to the positions
+    assert (
+        DataStoreView(full_ds).pages["Coverage"].max_positions == config.MAX_POSITIONS
+    )
+
+
+def test_estimate_note(full_ds):
+    dsv = DataStoreView(full_ds, max_positions=5)
+    track = dsv.state.track()
+    note = estimate_note(dsv.state.coord, dsv.state, track, 5)
+    assert "every 5th of 24 selected positions" in note.object
+    assert estimate_note(dsv.state.coord, dsv.state, track, 0).object == ""
+    assert estimate_note(dsv.state.coord, dsv.state, track, 24).object == ""

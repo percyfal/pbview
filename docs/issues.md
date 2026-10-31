@@ -37,10 +37,14 @@
 
 ## Other
 
-- [ ] only the threshold defaults can be estimated from a subset of
-      positions (`--max-positions`); `contig_mean_coverage`, the
-      per-selection histograms and `missingness_hist` still read the
-      whole genome, once per sample set
+- [x] the coverage and missingness pages use `--max-positions` too
+      and read the data once for all sample sets; contig means are
+      exact and also one pass
+- [ ] a selection of samples that is not exactly one sample set sums
+      the raw values; that path is neither batched across sets nor
+      cheap, and only samples positions
+- [ ] the estimate note on the pages is a one-line Markdown pane; mark
+      estimated tables and plots too
 
 - [x] coverage above `PBVIEW_MAX_COVERAGE_PER_SAMPLE` per sample is
       clipped into the last bin of `Track.sum_hist` (and of
