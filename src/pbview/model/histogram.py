@@ -109,15 +109,18 @@ def compute_threshold_defaults(
     datastore: "DataStore",
     active_track: str,
     *,
-    lower_q: float = 0.02,
-    upper_q: float = 0.98,
     max_bin_q: float = 0.995,
     max_bin_headroom: float = 1.2,
 ) -> dict[str, tuple[int, int, int]]:
     """Compute threshold defaults for each sample set in a track.
 
+    Return (lower, upper, max_bin) for each sample set in a track,
+    where lower=0.6*mean, upper=median+2*std, and max_bin=max_bin_q
+    quantile * max_bin_headroom. Mean and median values are computed
+    across the entire genome and may therefore not be representative
+    of the actual coverage distribution in a given region.
 
-    Return (lower, upper, max_bin) for each sample set in a track"""
+    """
     result = {}
     track = datastore.tracks[active_track]
     for s in track.groups("sample_set"):
