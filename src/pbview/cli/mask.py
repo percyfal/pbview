@@ -18,6 +18,8 @@ from pbview.mask import export as _export
 
 from ._common import (
     memory_limit_option,
+    missing_data_threshold_option,
+    missing_summary_errors,
     path_argument,
     progress_option,
     sampleset_name_option,
@@ -66,6 +68,7 @@ def mask() -> None:
 @log_level()
 @progress_option()
 @use_dask_option()
+@missing_data_threshold_option(multiple=True, default=None)
 @set_threads
 def generate(
     path: Path | str,
@@ -73,6 +76,7 @@ def generate(
     output: Path | str,
     track_name: str,
     progress: bool,
+    missing_data_threshold: tuple[int, ...] = (),
 ) -> None:
     """Generate accessible sites from the pbzarr store.
 
@@ -81,15 +85,22 @@ def generate(
     masks are output in a separate Zarr archive, defaulting to
     PATH_mask.
 
+    By default the missing-data threshold in THRESHOLD is used. Give
+    --missing-data-threshold (several times for several thresholds) to
+    generate masks for those thresholds instead; select one when
+    exporting.
+
     """
     output = output or Path(path).with_name(f"{Path(path).name}_mask")
-    _generate.generate_mask(
-        path,
-        threshold=threshold,
-        output=output,
-        track_name=track_name,
-        progress=progress,
-    )
+    with missing_summary_errors():
+        _generate.generate_mask(
+            path,
+            threshold=threshold,
+            output=output,
+            track_name=track_name,
+            progress=progress,
+            missing_cutoffs=missing_data_threshold or None,
+        )
 
 
 @click.command()
@@ -107,6 +118,7 @@ def generate(
 @memory_limit_option()
 @track_name_option(default="accessible")
 @sampleset_name_option()
+@missing_data_threshold_option(default=None)
 @log_level()
 @progress_option()
 @use_dask_option()
@@ -118,6 +130,7 @@ def export(
     track_name: str,
     progress: bool,
     sampleset_name: str | None = None,
+    missing_data_threshold: int | None = None,
 ) -> None:
     """Export mask to BED or FASTA format.
 
@@ -127,12 +140,16 @@ def export(
     output file name is based on the input path, defaulting to
     PATH_MASK.bed or PATH_MASK.fasta.
 
+    For a mask generated for several missing-data thresholds, choose
+    one with --missing-data-threshold.
+
     """
     ds = xr.open_zarr(path, consolidated=True)
 
     _export.export_mask(
         ds,
         sampleset_name=sampleset_name,
+        missing_cutoff=missing_data_threshold,
         output=output,
         output_format=output_format,
         track_name=track_name,

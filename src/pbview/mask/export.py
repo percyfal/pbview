@@ -35,6 +35,7 @@ def export_mask(
     ds: xr.Dataset,
     *,
     sampleset_name: str | None = None,
+    missing_cutoff: int | None = None,
     output_format: str | None = "BED",
     output: TextIO | None = None,
     track_name: str | None = None,
@@ -44,6 +45,30 @@ def export_mask(
         track = ds[track_name]
     except KeyError:
         raise click.BadParameter(f"Track '{track_name}' not found in datastore.")
+    if "missing_cutoff" in track.dims:
+        available = ds["missing_cutoff"].values.tolist()
+        if missing_cutoff is None:
+            raise click.BadParameter(
+                f"Track '{track_name}' holds masks for several missing-data "
+                f"thresholds {available}; choose one with --missing-data-threshold."
+            )
+        if missing_cutoff not in available:
+            raise click.BadParameter(
+                f"Missing-data threshold {missing_cutoff} not found in track "
+                f"'{track_name}' (available: {available})."
+            )
+        track = track.sel(missing_cutoff=missing_cutoff)
+    elif missing_cutoff is not None:
+        stored = sorted(
+            {
+                t["missing_cutoff"]
+                for t in ds.attrs.get("thresholds", {}).get("sample_sets", {}).values()
+            }
+        )
+        raise click.BadParameter(
+            f"Track '{track_name}' has no missing-data threshold to choose: it "
+            f"uses the threshold file's cutoff {stored}. Omit --missing-data-threshold."
+        )
     try:
         data = track.sel(sample_set=sampleset_name).values
     except KeyError:
@@ -52,9 +77,11 @@ def export_mask(
         )
 
     logger.info(
-        "Exporting mask for track '%s', sample set '%s' in format '%s'",
+        "Exporting mask for track '%s', sample set '%s', missing-data "
+        "threshold %s in format '%s'",
         track_name,
         sampleset_name,
+        missing_cutoff,
         output_format,
     )
     with ProgressBar() if progress else nullcontext():
