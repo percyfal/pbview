@@ -135,6 +135,7 @@ preprocess missingness`, or together as follows:
 
 ```bash
 pbview preprocess all --track-name depth \
+    --missing-data-threshold 3 \
     --sampleset-info tests/data/sampleset_info.tsv datastore
 ```
 
@@ -152,9 +153,11 @@ hard to sequence regions. By default, the output track is called
 
 The `missingness` summary assigns missing data status to individual
 bases based on a missing data threshold. The goal is to identify
-regions with high missingness. Bases with coverage at or below 3 are
-currently called missing; the threshold cannot yet be changed from the
-CLI. The output track is called
+regions with high missingness. Bases with coverage at or below
+`--missing-data-threshold` (default 3) are called missing. The option
+can be given several times, for example `--missing-data-threshold 3
+--missing-data-threshold 5`, to summarize several thresholds in one
+run. The output track is called
 `<track_name>_missing_cutoff=<threshold>`.
 
 ### 3. Accessibility thresholds
@@ -174,6 +177,10 @@ be obtained directly with the CLI:
 pbview preprocess thresholds datastore
 ```
 
+The command checks that the missingness summary for the chosen
+`--missing-data-threshold` (default 3) exists and stops with an error
+otherwise.
+
 ### 4. Export of masks
 
 Once a threshold file `thresholds.yml` has been obtained, the final
@@ -184,7 +191,12 @@ pbview mask generate datastore thresholds.yml -o datastore_mask
 ```
 
 Note that this will generate a separate output store consisting of
-boolean masks.
+boolean masks. By default each sample set uses the missing-data
+threshold recorded in the threshold file. Give
+`--missing-data-threshold` (several times for several thresholds) to
+generate masks for those thresholds instead; the layers that depend on
+the threshold, `accessible` and `excluded_missing`, then get a
+`missing_cutoff` dimension.
 
 > [!NOTE]
 > Masks can be either *inclusive*, whereby a locus marked with `True`
@@ -193,7 +205,9 @@ boolean masks.
 > is filtered out. By convention, these masks are prefixed with
 > `excluded_`.
 
-Finally, a mask can be exported with `pbview mask export`.
+Finally, a mask can be exported with `pbview mask export`. For a mask
+generated for several thresholds, choose one with
+`--missing-data-threshold`.
 
 ## Development note
 
