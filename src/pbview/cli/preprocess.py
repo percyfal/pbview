@@ -129,6 +129,18 @@ def preprocess_missingness(
 @progress_option()
 @chunk_size_option()
 @missing_data_threshold_option(default=3, deprecated_alias=True)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(dir_okay=False),
+    help="Also write the thresholds to this file (YAML) for `pbview mask generate`",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Overwrite an existing --output file",
+)
 @set_threads
 def preprocess_thresholds(
     path: Path | str,
@@ -136,12 +148,18 @@ def preprocess_thresholds(
     progress: bool,
     chunk_size: int,
     missing_data_threshold: int = 3,
+    output: str | None = None,
+    force: bool = False,
 ) -> None:
     """Compute thresholds for missingness and sum data.
 
     The missingness summary for the chosen threshold must have been
-    created with `pbview preprocess missingness`.
+    created with `pbview preprocess missingness`. With --output the
+    thresholds are also written as a threshold file with the values the
+    app starts with.
     """
+    if output is not None and Path(output).exists() and not force:
+        raise click.ClickException(f"{output} exists; use --force to overwrite it")
     with missing_summary_errors():
         preprocess_mod.compute_thresholds(
             path,
@@ -149,6 +167,7 @@ def preprocess_thresholds(
             progress=progress,
             chunk_size=chunk_size,
             missing_cutoff=missing_data_threshold,
+            output=output,
         )
 
 

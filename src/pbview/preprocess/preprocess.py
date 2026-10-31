@@ -16,6 +16,7 @@ from pbview.model.grouping import (
     write_column_groupings,
 )
 from pbview.model.histogram import compute_threshold_defaults, hist_stats
+from pbview.model.thresholds import profile_from_defaults
 from pbview.model.track import Track
 
 from .track import compute_track_missingness, compute_track_sum
@@ -99,8 +100,12 @@ def compute_thresholds(
     progress: bool = True,
     chunk_size: int = 1_000_000,
     missing_cutoff: int = 3,
+    output: Path | str | None = None,
 ) -> None:
-    """Compute default thresholds for sum data"""
+    """Compute default thresholds for sum data.
+
+    With `output`, also write them as a threshold file for `mask generate`.
+    """
     show_progress = ProgressBar() if progress else nullcontext()
     ds = DataStore(path=path)
     ds.tracks[track_name].require_missingness(missing_cutoff)
@@ -152,3 +157,8 @@ def compute_thresholds(
         df = pd.DataFrame(rows)
 
     print(df)
+
+    if output is not None:
+        profile = profile_from_defaults(track, defaults, ds.id, missing_cutoff)
+        profile.write(output)
+        logger.info("Wrote thresholds to %s", output)
