@@ -249,3 +249,23 @@ def sample_sets() -> xr.DataArray:
         },
     )
     return sample_sets
+
+
+SET_COLUMNS = {
+    "ALL": [0, 1, 2, 3, 4, 5, 6],
+    "pop1": [0, 1, 2],
+    "pop2": [3, 4],
+    "pop3": [5, 6],
+}
+
+
+def expected_accessible(missing_cutoff, lower=10, upper=200, max_missing=0):
+    """Accessible mask per sample set, computed directly from the tiny test data"""
+    raw = tiny_datatree()["depth"]["values"].values  # (position, sample)
+    out = {}
+    for name, columns in SET_COLUMNS.items():
+        sums = raw[:, columns].sum(axis=1)
+        missing = (raw[:, columns] <= missing_cutoff).sum(axis=1)
+        excluded = (sums < lower) | (sums > upper) | (missing > max_missing)
+        out[name] = ~excluded
+    return out

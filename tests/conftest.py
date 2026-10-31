@@ -6,7 +6,10 @@ import panel as pn
 import pytest
 import xarray as xr
 
+from pbview import config
 from pbview.model.datastore import DataStore
+from pbview.model.thresholds import SampleSetThresholds, ThresholdProfile
+from pbview.preprocess import preprocess as preprocess_mod
 
 dirname = Path(os.path.abspath(os.path.dirname(__file__)))
 
@@ -92,3 +95,25 @@ def server_cleanup():
         yield
     finally:
         pn.state.reset()
+
+
+@pytest.fixture
+def two_cutoff_store(make_datastore_path, sample_sets):
+    """Store with sample sets, a sum and missingness summaries for cutoffs 3 and 5"""
+    path = make_datastore_path(sample_sets=sample_sets)
+    preprocess_mod.preprocess(path, progress=False, missing_cutoffs=(3, 5))
+    return path
+
+
+@pytest.fixture
+def threshold_file(tmp_path):
+    """Threshold profile: cutoff 3, coverage 10-200, no missing sample allowed"""
+    sets = ["ALL", "pop1", "pop2", "pop3"]
+    profile = ThresholdProfile(
+        schema_version=config.SCHEMA_VERSION,
+        dataset_id="test",
+        sample_sets={s: SampleSetThresholds(3, 10, 200, 0) for s in sets},
+    )
+    path = tmp_path / "thresholds.yml"
+    profile.write(path)
+    return path
