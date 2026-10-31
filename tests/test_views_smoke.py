@@ -54,3 +54,23 @@ def test_selection_overview(full_ds):
 def test_selection_overview_pane(dsv):
     table = dsv.cv.summary_pane()
     assert len(table.value) == 2 + len(SETS)
+
+
+def test_summary_scatter_with_contig_subset(dsv):
+    dsv.state.contigs = ["chr2"]
+    df = dsv.pages["Summary"]._contig_scatter_df()
+    assert len(df) == 3 * len(SETS)  # one row per contig and set
+    emphasis = df.drop_duplicates("contig").set_index("contig")["selected"]
+    assert emphasis["chr2"] > emphasis["chr1"]
+    assert emphasis["chr2"] > emphasis["chr10"]
+
+
+def test_summary_scatter_click_selects_contigs(dsv):
+    page, state = dsv.pages["Summary"], dsv.state
+    genome = state.datastore.genome
+    rows = [i for i, c in enumerate(page._source.data["contig"]) if c == "chr1"]
+    page._on_select("indices", [], rows[:1])
+    assert state.contigs == ["chr1"]
+    assert state.coord.selected_contigs(genome) == ("chr1",)
+    page._on_select("indices", rows[:1], [])  # clearing the selection selects all
+    assert set(state.contigs) == {"chr1", "chr2", "chr10"}
