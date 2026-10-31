@@ -6,7 +6,7 @@ from pbview.model.histogram import compute_threshold_defaults
 from pbview.model.thresholds import profile_from_defaults, profile_from_state
 from pbview.view.coordinates import selection_overview
 from pbview.view.datastore import DataStoreView
-from pbview.view.track import estimate_note
+from pbview.view.track import estimate_label, estimate_note, selection_stride, titled
 
 SETS = ["ALL", "pop1", "pop2", "pop3"]
 
@@ -118,3 +118,48 @@ def test_estimate_note(full_ds):
     assert "every 5th of 24 selected positions" in note.object
     assert estimate_note(dsv.state.coord, dsv.state, track, 0).object == ""
     assert estimate_note(dsv.state.coord, dsv.state, track, 24).object == ""
+
+
+def test_estimate_label_and_title():
+    assert estimate_label(1) == ""
+    assert estimate_label(14) == "estimated from every 14th position"
+    assert titled("Coverage", 1) == "Coverage"
+    assert titled("Coverage", 14) == "Coverage (estimated from every 14th position)"
+
+
+def test_selection_stride(full_ds):
+    dsv = DataStoreView(full_ds)
+    state, track = dsv.state, dsv.state.track()
+    assert selection_stride(state.coord, state, track, 0) == 1
+    assert selection_stride(state.coord, state, track, 24) == 1
+    assert selection_stride(state.coord, state, track, 5) == 5
+    chr2 = state.coord.with_contigs(["chr2"])
+    n = chr2.resolve_for(track, full_ds.genome).intervals.n_positions
+    assert selection_stride(chr2, state, track, 5) == -(-n // 5)
+
+
+def test_tables_say_when_values_are_estimates(full_ds):
+    exact = DataStoreView(full_ds, max_positions=0)
+    est = DataStoreView(full_ds, max_positions=5)
+    for name in ("Coverage", "Missingness"):
+        assert "sampling" not in exact.pages[name].table._df_rx()
+        df = est.pages[name].table._df_rx()
+        assert set(df["sampling"]) == {"estimated from every 5th position"}
+        assert len(df) == len(SETS)
+
+
+def test_plots_say_when_values_are_estimates(full_ds):
+    exact = DataStoreView(full_ds, max_positions=0)
+    est = DataStoreView(full_ds, max_positions=5)
+    for dsv, suffix in ((exact, ""), (est, " (estimated from every 5th position)")):
+        for name in ("Coverage", "Missingness"):
+            page = dsv.pages[name]
+            for s, view in page._plots.items():
+                assert view._title(dsv.state.coord, s) == s + suffix
+        # the plots still render with the new argument
+        cov, mis = dsv.pages["Coverage"], dsv.pages["Missingness"]
+        cov._plots["ALL"]._plot(
+            cov._hist_rx["ALL"].rx.value, 10, 50, False, dsv.state.coord
+        )
+        mis._plots["ALL"]._plot(mis._hist_rx["ALL"].rx.value, 1, dsv.state.coord)
+        cov._make_boxplot(*[rx.rx.value for rx in cov._hist_rx.values()])

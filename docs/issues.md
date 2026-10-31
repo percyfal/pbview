@@ -43,8 +43,8 @@
 - [ ] a selection of samples that is not exactly one sample set sums
       the raw values; that path is neither batched across sets nor
       cheap, and only samples positions
-- [ ] the estimate note on the pages is a one-line Markdown pane; mark
-      estimated tables and plots too
+- [x] estimated pages say so: a note, a `sampling` table column and
+      "(estimated from every kth position)" in plot titles
 
 - [x] coverage above `PBVIEW_MAX_COVERAGE_PER_SAMPLE` per sample is
       clipped into the last bin of `Track.sum_hist` (and of

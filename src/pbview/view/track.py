@@ -30,6 +30,23 @@ from .plots import hist_boxplot
 pn.extension("tabulator")
 
 
+def selection_stride(coord, state: SelectionStateBase, track: Track, max_positions):
+    """Every k-th selected position is counted (k=1 means every position is counted)."""
+    n = coord.resolve_for(track, state.datastore.genome).intervals.n_positions
+    return sample_stride(n, max_positions)
+
+
+def estimate_label(stride: int) -> str:
+    """Short text for plot titles and table columns; empty for exact values."""
+    return f"estimated from every {stride}th position" if stride > 1 else ""
+
+
+def titled(name: str, stride: int) -> str:
+    """`name`, followed by how the values were estimated."""
+    label = estimate_label(stride)
+    return f"{name} ({label})" if label else name
+
+
 def estimate_note(coord, state: SelectionStateBase, track: Track, max_positions: int):
     """Markdown note that says when histograms are estimated, else empty."""
     n = coord.resolve_for(track, state.datastore.genome).intervals.n_positions
@@ -45,6 +62,9 @@ def estimate_note(coord, state: SelectionStateBase, track: Track, max_positions:
 class TrackIndicatorTableBase(Viewer):
     state = param.ClassSelector(class_=SelectionStateBase, is_instance=True)
     hist_rxs = param.Dict()  # {sample_set: ((counts, bins))}
+    max_positions = param.Integer(
+        default=0, bounds=(0, None), doc="Max number of positions counted; 0 counts all"
+    )
     formatters = {}
 
     def __init__(self, **params):
@@ -58,6 +78,14 @@ class TrackIndicatorTableBase(Viewer):
     def _extra_deps(self, **params):
         retval = []
         return retval
+
+    def _mark_estimates(self, df: pd.DataFrame, coord) -> pd.DataFrame:
+        """Add a `sampling` column when the histograms are estimates."""
+        track = self.state.track()
+        stride = selection_stride(coord, self.state, track, self.max_positions)
+        if stride > 1:
+            df["sampling"] = estimate_label(stride)
+        return df
 
     def __panel__(self):
         return pn.widgets.Tabulator(
@@ -138,7 +166,7 @@ class TrackIndicatorCoverageTable(TrackIndicatorTableBase):
                     "std": stats["std"],
                 }
             )
-        return pd.DataFrame(rows)
+        return self._mark_estimates(pd.DataFrame(rows), coord)
 
 
 class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
@@ -181,7 +209,7 @@ class TrackIndicatorMissingnessTable(TrackIndicatorTableBase):
                     "frac_full_genome": accessible / genome.size,
                 }
             )
-        return pd.DataFrame(rows)
+        return self._mark_estimates(pd.DataFrame(rows), coord)
 
 
 class TrackView(Viewer, param.ParameterizedABC):
@@ -206,6 +234,15 @@ class _TrackPlotView(TrackView, param.ParameterizedABC):
         default=config.DEFAULT_GROUPING_SET, doc="Sample set to plot"
     )
     by_sample = param.Boolean(default=False)
+    max_positions = param.Integer(
+        default=0, bounds=(0, None), doc="Max number of positions counted; 0 counts all"
+    )
+
+    def _title(self, coord, name: str) -> str:
+        """Plot title: the name, and how it was estimated."""
+        return titled(
+            name, selection_stride(coord, self.state, self.track, self.max_positions)
+        )
 
     @property
     def coord(self):
@@ -223,13 +260,22 @@ class TrackCoverageView(_TrackPlotView):
         self._hist_rx = hist_rx
         lo = self.state.param[f"lower_coverage_{self.sample_set}"]
         hi = self.state.param[f"upper_coverage_{self.sample_set}"]
-        self.plot = pn.bind(self._plot, self._hist_rx, lo, hi, page.param.by_sample)
+        self.plot = pn.bind(
+            self._plot,
+            self._hist_rx,
+            lo,
+            hi,
+            page.param.by_sample,
+            self.state.param.coord,
+        )
 
-    def _plot(self, hist_data, lower, upper, by_sample):
+    def _plot(self, hist_data, lower, upper, by_sample, coord):
         n = self.n_samples if by_sample else 1
         counts, bins = hist_data
         df = pd.DataFrame({"coverage": bins, "count": counts})
-        scatter = df.hvplot.scatter(x="coverage", y="count").opts(shared_axes=False)
+        scatter = df.hvplot.scatter(
+            x="coverage", y="count", title=self._title(coord, self.sample_set)
+        ).opts(shared_axes=False)
         band = hv.VSpan(lower / n, upper / n).opts(color="grey", alpha=0.2)
         return (scatter * band).opts(shared_axes=False)
 
@@ -250,12 +296,16 @@ class TrackMissingnessView(_TrackPlotView):
         max_missing_samples = self.state.param[f"max_missing_samples_{self.sample_set}"]
         self.maxbins = self.track.n_selected(self.state.coord.column)
 
-        self.plot = pn.bind(self._plot, self._hist_rx, max_missing_samples)
+        self.plot = pn.bind(
+            self._plot, self._hist_rx, max_missing_samples, self.state.param.coord
+        )
 
-    def _plot(self, hist_data, max_missing_samples):
+    def _plot(self, hist_data, max_missing_samples, coord):
         counts, bins = hist_data
         df = pd.DataFrame({"missingness": bins, "count": counts})
-        scatter = df.hvplot.scatter(x="missingness", y="count").opts(shared_axes=False)
+        scatter = df.hvplot.scatter(
+            x="missingness", y="count", title=self._title(coord, self.sample_set)
+        ).opts(shared_axes=False)
         band = hv.VSpan(0, max_missing_samples).opts(color="grey", alpha=0.2)
         return (scatter * band).opts(shared_axes=False)
 
@@ -310,6 +360,7 @@ class TrackCoveragePage(Viewer):
                 hist_rx=self._hist_rx[s],
                 maxbins=self.maxbins,
                 by_sample=self.by_sample,
+                max_positions=self.max_positions,
             )
             for s in self._names
         }
@@ -318,6 +369,7 @@ class TrackCoveragePage(Viewer):
             page=self,
             state=self.state,
             hist_rxs=self._hist_rx,  # dict of rx
+            max_positions=self.max_positions,
         )
 
     def __panel__(self):
@@ -369,7 +421,12 @@ class TrackCoveragePage(Viewer):
             color_map=color_map,
             responsive=True,
             height=400,
-            title="Coverage distribution",
+            title=titled(
+                "Coverage distribution",
+                selection_stride(
+                    self.state.coord, self.state, self.track, self.max_positions
+                ),
+            ),
         )
 
     @property
@@ -404,6 +461,7 @@ class TrackMissingnessPage(Viewer):
                 state=self.state,
                 sample_set=s,
                 hist_rx=self._hist_rx[s],
+                max_positions=self.max_positions,
             )
             for s in self._names
         }
@@ -411,6 +469,7 @@ class TrackMissingnessPage(Viewer):
         self._table = TrackIndicatorMissingnessTable(
             state=self.state,
             hist_rxs=self._hist_rx,  # dict of rx
+            max_positions=self.max_positions,
         )
 
     def _compute_hist(self, coord, sample_set, missing_cutoff):
