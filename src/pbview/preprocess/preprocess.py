@@ -16,7 +16,12 @@ from pbview.model.grouping import (
     read_sampleset_info,
     write_column_groupings,
 )
-from pbview.model.histogram import compute_threshold_defaults, fold_hist, hist_stats
+from pbview.model.histogram import (
+    compute_threshold_defaults,
+    fold_hist,
+    hist_stats,
+    sample_set_hists,
+)
 from pbview.model.thresholds import profile_from_defaults
 from pbview.model.track import Track
 
@@ -126,6 +131,7 @@ def compute_thresholds(
     # the defaults for maxbins
     rows = []
     with show_progress:
+        hists = sample_set_hists(ds, track_name, max_positions)  # cached
         for ss in track.groups("sample_set"):
             # FIXME: Add option to choose by sample stats
             by_sample = False
@@ -135,7 +141,7 @@ def compute_thresholds(
             maxbins = defaults[f"maxbins_{ss}"]
             bins = np.arange(maxbins + 1)
 
-            hist = track.sum_hist(ss, n_samples, max_positions)
+            hist = hists[ss]
             counts = fold_hist(hist, maxbins + 1)  # as coverage_hist(bins)
             scale = ds.genome.size / hist.sum()  # 1 unless sampled
             lo, up = defaults[f"lower_coverage_{ss}"], defaults[f"upper_coverage_{ss}"]
