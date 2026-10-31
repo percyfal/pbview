@@ -163,7 +163,8 @@ run. The output track is called
 ### 3. Accessibility thresholds
 
 The coverage track and summaries can be interactively explored with
-the command `pbview serve datastore`. The app will present tables with
+the command `pbview serve datastore`, which prints the address to open
+(add `--show` to open a browser window). The app will present tables with
 information on accessibility and threshold values that the user can
 modify in the interactive plots. The tables also include suggested
 thresholds based on recommendations from the literature. When

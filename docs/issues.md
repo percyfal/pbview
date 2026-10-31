@@ -26,8 +26,8 @@
       Done: `--missing-data-threshold` (`--threshold` kept as an
       alias on `thresholds`); the cutoff is validated but not used
       further yet
-- [ ] `pbview serve` opens a browser by default (`--show`); consider
-      `--no-show` as the default
+- [x] `pbview serve` no longer opens a browser by default; `--show`
+      does
 - [ ] `pbview summarize` and `pbview annotation` have not been
       exercised since the selection refactor; hidden for the time
       being
