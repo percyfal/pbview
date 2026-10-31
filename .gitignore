@@ -10,7 +10,8 @@
 /.gitattributes
 /data/
 /opt/
-/docs/
+/docs/*
+!/docs/design.md
 /uv.lock
 .cargo-target
 *.bak
