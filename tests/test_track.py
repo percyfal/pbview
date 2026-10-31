@@ -870,10 +870,87 @@ def test_raw_selections_are_read_in_one_pass(track, coord, genome, monkeypatch):
     bins = {s: np.arange(201) for s in selections}
     calls = _counting_computes(monkeypatch)
     track.coverage_hist_many(selections, bins)
-    assert sorted(calls) == [3, 4]  # three raw selections; four summary sets
+    # four summary sets; three raw selections, each with coverage and
+    # one missingness histogram per cutoff
+    raw_graphs = 3 * (1 + len(track.summaries.missingness))
+    assert sorted(calls) == sorted([4, raw_graphs])
+
+
+def test_coverage_and_missingness_share_the_raw_pass(track, coord, genome, monkeypatch):
+    selections = _partial_selections(track, coord, genome)
+    bins = {s: np.arange(201) for s in selections}
+    calls = _counting_computes(monkeypatch)
+    track.coverage_hist_many(selections, bins)
     del calls[:]
     track.missingness_hist_many(selections, 3)
-    assert sorted(calls) == [3, 4]
+    assert calls == [4]  # only pop2, a sample set: its summary, no raw data
+
+
+def test_missingness_first_leaves_nothing_for_coverage(
+    track, coord, genome, monkeypatch
+):
+    selections = _partial_selections(track, coord, genome)
+    bins = {s: np.arange(201) for s in selections}
+    calls = _counting_computes(monkeypatch)
+    track.missingness_hist_many(selections, 3)
+    del calls[:]
+    track.coverage_hist_many(selections, bins)
+    assert calls == [4]  # pop2 from the sum summary
+
+
+def test_raw_bins_beyond_the_selection_cap_need_no_second_pass(
+    track, coord, genome, monkeypatch
+):
+    """The page bins come from whole sets; a selection has fewer samples."""
+    monkeypatch.setattr(config, "MAX_COVERAGE_PER_SAMPLE", 1)  # cap 7: 7 columns
+    selections = _partial_selections(track, coord, genome)  # ALL: 4 columns
+    bins = {s: np.arange(7) for s in selections}  # max bin 6: above 4, within 7
+    calls = _counting_computes(monkeypatch)
+    again = []  # a second pass over the raw data goes through _raw_graph
+    real = type(track)._raw_graph
+    monkeypatch.setattr(
+        type(track), "_raw_graph", lambda *a, **k: again.append(1) or real(*a, **k)
+    )
+    cov = track.coverage_hist_many(selections, bins)
+    assert again == []
+    assert 3 * (1 + len(track.summaries.missingness)) in calls  # the one bundle
+    raw = _helpers.tiny_datatree()["depth"]["values"].values
+    sums = raw[:, [0, 3, 4, 5]].sum(1)
+    np.testing.assert_array_equal(
+        cov["ALL"][0], np.bincount(np.minimum(sums, 6), minlength=7)
+    )
+
+
+def test_bundled_raw_hists_equal_independent_numpy(track, coord, genome):
+    selections = _partial_selections(track, coord, genome)
+    raw = _helpers.tiny_datatree()["depth"]["values"].values  # (position, sample)
+    columns = {
+        "ALL": [0, 3, 4, 5],
+        "pop1": [0],
+        "pop3": [5],
+    }
+    cov = track.coverage_hist_many(selections, {s: np.arange(201) for s in selections})
+    mis = track.missingness_hist_many(selections, 3)
+    for s, cols in columns.items():
+        sums = raw[:, cols].sum(1)
+        np.testing.assert_array_equal(
+            cov[s][0], np.bincount(np.minimum(sums, 200), minlength=201)
+        )
+        missing = (raw[:, cols] <= 3).sum(1)
+        np.testing.assert_array_equal(
+            mis[s][0], np.bincount(missing, minlength=len(cols) + 1)
+        )
+
+
+def test_raw_coverage_beyond_the_cap_is_still_exact(track, coord, genome, monkeypatch):
+    monkeypatch.setattr(config, "MAX_COVERAGE_PER_SAMPLE", 1)  # cap = columns
+    selections = _partial_selections(track, coord, genome)
+    raw = _helpers.tiny_datatree()["depth"]["values"].values
+    cov = track.coverage_hist_many(selections, {s: np.arange(201) for s in selections})
+    sums = raw[:, [0, 3, 4, 5]].sum(1)
+    np.testing.assert_array_equal(
+        cov["ALL"][0], np.bincount(np.minimum(sums, 200), minlength=201)
+    )
 
 
 def test_require_missingness(full_ds):

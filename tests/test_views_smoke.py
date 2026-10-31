@@ -132,7 +132,11 @@ def test_pages_read_a_partial_sample_selection_in_one_pass(full_ds, monkeypatch)
     cov, mis = dsv.pages["Coverage"], dsv.pages["Missingness"]
     coverage = {s: rx.rx.value for s, rx in cov._hist_rx.items()}
     missingness = {s: rx.rx.value for s, rx in mis._hist_rx.items()}
-    assert sorted(calls) == [3, 3, 4, 4]  # raw sets in one pass, summary sets in one
+    # the coverage page reads the summary sets (4) and the raw sets once, with
+    # their missingness (3 raw selections x (coverage + cutoffs)); the
+    # missingness page then reads only its summary set
+    raw_graphs = 3 * (1 + len(full_ds.tracks["depth"].summaries.missingness))
+    assert sorted(calls) == sorted([4, raw_graphs, 4])
     track = dsv.state.track()
     for s in SETS:
         resolved = dsv.state.coord.with_sample_sets([s]).resolve_for(
