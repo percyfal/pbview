@@ -7,10 +7,12 @@
       (currently the default cutoff 3 cannot be changed).
       `preprocess()` already takes `missing_cutoff`, so this is only
       plumbing
-- [ ] add option to export `thresholds.yml` via `pbview preprocess
-      thresholds` (needs a default for `max_missing_samples`, which
-      only the UI computes today as n_samples / 2, and a profile
-      builder that does not require a UI state)
+- [x] add option to export `thresholds.yml` via `pbview preprocess
+      thresholds`
+      Done: `-o/--output` (and `--force`); `profile_from_defaults`
+      gives the thresholds the app starts with, and
+      `default_max_missing_samples` (half of the samples) is shared
+      with the app
 - [x] `pbview preprocess thresholds --threshold INT` should make use
       of `depth_missing_cutoff=INT`; throw error if this has not been
       preprocessed. Also, `--threshold` is a poor name (better
