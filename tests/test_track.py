@@ -825,6 +825,57 @@ def test_missingness_hist_estimates_are_scaled(track, coord, genome):
     assert exact.sum() == 24
 
 
+PARTIAL = ["s1", "s4", "s5", "s6"]  # raw: ALL, pop1 (s1), pop3 (s6); pop2 is a set
+
+
+def _partial_selections(track, coord, genome):
+    partial = coord.with_samples(PARTIAL)
+    return {
+        s: partial.with_sample_sets([s]).resolve_for(track, genome)
+        for s in ("ALL", "pop1", "pop2", "pop3")
+    }
+
+
+@pytest.mark.parametrize("max_positions", [0, 5])
+def test_coverage_hist_many_equals_the_single_calls(
+    track, coord, genome, max_positions
+):
+    selections = _partial_selections(track, coord, genome)
+    assert [
+        track._matching_group_of(r.labels, "sample_set") for r in selections.values()
+    ] == [None, None, "pop2", None]
+    bins = {s: np.arange(201) for s in selections}
+    many = track.coverage_hist_many(selections, bins, max_positions)
+    assert list(many) == list(selections)
+    for s, resolved in selections.items():
+        counts, b = track.coverage_hist(bins[s], resolved, max_positions)
+        np.testing.assert_array_equal(many[s][0], counts)
+        np.testing.assert_array_equal(many[s][1], b)
+
+
+@pytest.mark.parametrize("max_positions", [0, 5])
+def test_missingness_hist_many_equals_the_single_calls(
+    track, coord, genome, max_positions
+):
+    selections = _partial_selections(track, coord, genome)
+    many = track.missingness_hist_many(selections, 3, max_positions)
+    for s, resolved in selections.items():
+        counts, b = track.missingness_hist(resolved, 3, max_positions)
+        np.testing.assert_array_equal(many[s][0], counts)
+        np.testing.assert_array_equal(many[s][1], b)
+
+
+def test_raw_selections_are_read_in_one_pass(track, coord, genome, monkeypatch):
+    selections = _partial_selections(track, coord, genome)
+    bins = {s: np.arange(201) for s in selections}
+    calls = _counting_computes(monkeypatch)
+    track.coverage_hist_many(selections, bins)
+    assert sorted(calls) == [3, 4]  # three raw selections; four summary sets
+    del calls[:]
+    track.missingness_hist_many(selections, 3)
+    assert sorted(calls) == [3, 4]
+
+
 def test_require_missingness(full_ds):
     track = full_ds.tracks["depth"]
     assert track.require_missingness(3) is full_ds.tracks["depth_missing_cutoff=3"]

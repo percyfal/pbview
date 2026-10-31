@@ -339,9 +339,12 @@ class TrackCoveragePage(Viewer):
         self.param.active_sets.objects = list(self._names)
         self.active_sets = list(self._names)
 
+        # All sample sets of a selection are computed together, so the
+        # data are read once; each set's rx picks its histogram
+        self._all_rx = pn.rx(self._compute_all)(self.state.param.coord)
         self._hist_rx = {
-            s: pn.rx(self._compute_hist)(
-                self.maxbins_default[s], self.state.param.coord, s, self.param.by_sample
+            s: pn.rx(self._pick_hist)(
+                self._all_rx, s, self.state.param.coord, self.param.by_sample
             )
             for s in self._names
         }
@@ -393,16 +396,23 @@ class TrackCoveragePage(Viewer):
             plot_grid,
         )
 
-    def _compute_hist(self, maxbins, coord, sample_set, by_sample):
-        bins = np.arange(maxbins + 1)
-        resolved = coord.with_sample_sets([sample_set]).resolve_for(
+    def _resolved(self, coord, sample_set):
+        return coord.with_sample_sets([sample_set]).resolve_for(
             self.track, self.state.datastore.genome
         )
-        counts, bins = self.track.coverage_hist(
-            bins=bins, resolved=resolved, max_positions=self.max_positions
+
+    def _compute_all(self, coord):
+        """{sample set: (counts, bins)} for every sample set, in one pass."""
+        return self.track.coverage_hist_many(
+            {s: self._resolved(coord, s) for s in self._names},
+            bins={s: np.arange(self.maxbins_default[s] + 1) for s in self._names},
+            max_positions=self.max_positions,
         )
+
+    def _pick_hist(self, hists, sample_set, coord, by_sample):
+        counts, bins = hists[sample_set]
         if by_sample:
-            bins = bins / len(resolved.labels)
+            bins = bins / len(self._resolved(coord, sample_set).labels)
         return counts, bins
 
     def _render_plots(self, active):
@@ -448,11 +458,11 @@ class TrackMissingnessPage(Viewer):
         self.param.active_sets.objects = list(self._names)
         self.active_sets = list(self._names)
         self.maxbins = self.track.n_selected(self.state.coord.column)
+        self._all_rx = pn.rx(self._compute_all)(
+            self.state.param.coord, self.state.param.missing_cutoff
+        )
         self._hist_rx = {
-            s: pn.rx(self._compute_hist)(
-                self.state.param.coord, s, self.state.param.missing_cutoff
-            )
-            for s in self._names
+            s: pn.rx(lambda hists, s=s: hists[s])(self._all_rx) for s in self._names
         }
 
         self._plots = {
@@ -472,12 +482,15 @@ class TrackMissingnessPage(Viewer):
             max_positions=self.max_positions,
         )
 
-    def _compute_hist(self, coord, sample_set, missing_cutoff):
-        resolved = coord.with_sample_sets([sample_set]).resolve_for(
-            self.track, self.state.datastore.genome
-        )
-        return self.track.missingness_hist(
-            resolved=resolved,
+    def _compute_all(self, coord, missing_cutoff):
+        """{sample set: (counts, bins)} for every sample set, in one pass."""
+        return self.track.missingness_hist_many(
+            {
+                s: coord.with_sample_sets([s]).resolve_for(
+                    self.track, self.state.datastore.genome
+                )
+                for s in self._names
+            },
             missing_cutoff=missing_cutoff,
             max_positions=self.max_positions,
         )

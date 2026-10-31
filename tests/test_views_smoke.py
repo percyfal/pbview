@@ -1,3 +1,4 @@
+import dask
 import pytest
 
 from pbview import config
@@ -118,6 +119,29 @@ def test_estimate_note(full_ds):
     assert "every 5th of 24 selected positions" in note.object
     assert estimate_note(dsv.state.coord, dsv.state, track, 0).object == ""
     assert estimate_note(dsv.state.coord, dsv.state, track, 24).object == ""
+
+
+def test_pages_read_a_partial_sample_selection_in_one_pass(full_ds, monkeypatch):
+    dsv = DataStoreView(full_ds, max_positions=0)
+    dsv.state.samples = ["s1", "s4", "s5", "s6"]  # not a sample set
+    calls = []
+    real = dask.compute
+    monkeypatch.setattr(
+        dask, "compute", lambda *a, **k: calls.append(len(a)) or real(*a, **k)
+    )
+    cov, mis = dsv.pages["Coverage"], dsv.pages["Missingness"]
+    coverage = {s: rx.rx.value for s, rx in cov._hist_rx.items()}
+    missingness = {s: rx.rx.value for s, rx in mis._hist_rx.items()}
+    assert sorted(calls) == [3, 3, 4, 4]  # raw sets in one pass, summary sets in one
+    track = dsv.state.track()
+    for s in SETS:
+        resolved = dsv.state.coord.with_sample_sets([s]).resolve_for(
+            track, full_ds.genome
+        )
+        counts, _ = track.coverage_hist(coverage[s][1].astype(int), resolved)
+        assert (coverage[s][0] == counts).all()
+        counts, _ = track.missingness_hist(resolved, dsv.state.missing_cutoff)
+        assert (missingness[s][0] == counts).all()
 
 
 def test_estimate_label_and_title():
