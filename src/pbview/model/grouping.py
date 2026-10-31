@@ -1,5 +1,21 @@
 """
-Grouping functionality.
+Groupings of track columns.
+
+A grouping is a boolean (column, group) membership `DataArray`, for example
+`(sample, sample_set)`; a column may belong to several groups.
+
+- Every track exposes a derived *identity* grouping `(column_dim, "identity")`
+  with the single set `ALL` (`IDENTITY_DIM`, `config.DEFAULT_GROUPING_SET`).
+  It is computed from the column labels and never stored. A track whose
+  column dim is already `identity` has none.
+- Stored groupings are user-supplied only. They live in
+  `/{track}/_meta/column_groupings` (one variable `<group_dim>_membership`
+  per group dim) and are written with `write_column_groupings`. They always
+  contain an all-True `ALL` set (`ensure_all_set`) and cannot use the
+  reserved dim `identity`.
+- A summary track's column dim is the group dim of the grouping it was
+  computed from (`identity` when there is no user grouping), and
+  `perbase:source_grouping_hash` (`grouping_hash`) detects staleness.
 """
 
 from __future__ import annotations
