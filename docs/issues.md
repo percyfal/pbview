@@ -37,6 +37,11 @@
 
 ## Other
 
+- [ ] PCA: contigs shorter than the window size, and the positions of a
+      contig that do not fill a window, are not used; a sample in
+      several sample sets is coloured by its first set (not `ALL`); the
+      page computes on a button press, not live
+
 - [x] the contig plot was empty after a session ended: the views were
       built once and shared by all sessions; `serve` now builds them per
       session (the data store is still shared)

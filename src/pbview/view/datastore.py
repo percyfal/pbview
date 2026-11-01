@@ -18,6 +18,7 @@ from pbview.model.histogram import compute_threshold_defaults
 from pbview.model.selection import build_selection_state
 from pbview.view.coordinates import CoordinatesView
 from pbview.view.track import TrackCoveragePage, TrackMissingnessPage
+from pbview.view.pca import PcaPage
 from pbview.view.summary import SummaryPage
 
 pn.extension("tabulator")
@@ -69,7 +70,10 @@ class DataStoreView(Viewer):
             coverage_page=self.pages["Coverage"],
             missingness_page=self.pages["Missingness"],
         )
-        self.pages = {k: self.pages[k] for k in ["Summary", "Coverage", "Missingness"]}
+        self.pages["PCA"] = PcaPage(state=self.state, track=self.state.track())
+        self.pages = {
+            k: self.pages[k] for k in ["Summary", "Coverage", "Missingness", "PCA"]
+        }
 
         self.param.active_page.objects = list(self.pages)
         self.active_page = next(iter(self.pages))
