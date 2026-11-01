@@ -229,3 +229,90 @@ def test_genome_gauges_follow_the_selection(full_ds):
     assert pane._pane[0].value < genome.size
     dsv.state.lower = int(genome.lengths.max())  # the length filter counts too
     assert pane._pane[0].value == active_genome_size(dsv.state.coord, genome)
+
+
+def test_pca_page_is_in_the_app(dsv):
+    assert list(dsv.pages) == ["Summary", "Coverage", "Missingness", "PCA"]
+    assert "PCA" in dsv.param.active_page.objects
+
+
+def test_pca_page_waits_for_the_button(dsv):
+    page = dsv.pages["PCA"]
+    assert page.result is None
+    status = page._status(None, None, dsv.state.coord, page.window_size)
+    assert "Run PCA" in status.object
+    assert page._scatter(None, 1, 2, False).object == ""
+
+
+def test_pca_page_runs_for_the_selection(dsv):
+    page = dsv.pages["PCA"]
+    page.window_size = 3
+    page.run()
+    result = page.result
+    assert result.n_windows == 7 and len(result.samples) == 7
+    assert page.param.x_component.objects == list(range(1, 8))
+    assert (page.x_component, page.y_component) == (1, 2)
+    status = page._status(result, page.ran_for, dsv.state.coord, 3).object
+    assert "PCA of 7 samples in 7 windows of 3 bp" in status
+    # the same result is returned for the same selection, not computed again
+    page.run()
+    assert page.result is result
+
+
+def test_pca_page_draws_the_samples_by_sample_set(dsv):
+    page = dsv.pages["PCA"]
+    page.window_size = 3
+    page.run()
+    plot = page._scatter(page.result, 1, 2, False)
+    assert [e.label for e in plot] == ["pop1", "pop2", "pop3"]
+    assert sum(len(e) for e in plot) == 7  # every sample once
+    with_labels = page._scatter(page.result, 1, 3, True)
+    assert len(with_labels) == 4  # three sets and the labels
+    assert page._scatter(page.result, 1, 20, False).object == ""
+    assert len(page._scree(page.result)) == 7
+    assert len(page._table(page.result).value) == 7
+
+
+def test_pca_page_says_when_the_selection_has_changed(dsv):
+    page = dsv.pages["PCA"]
+    page.window_size = 3
+    page.run()
+    dsv.state.contigs = ["chr1", "chr10"]
+    status = page._status(page.result, page.ran_for, dsv.state.coord, 3).object
+    assert "changed since the last run" in status
+    page.run()
+    assert page.result.n_windows == 5  # 3 + 2
+    status = page._status(page.result, page.ran_for, dsv.state.coord, 3).object
+    assert "PCA of 7 samples in 5 windows" in status
+    page.window_size = 4
+    status = page._status(page.result, page.ran_for, dsv.state.coord, 4).object
+    assert "changed since the last run" in status
+
+
+def test_pca_page_reports_an_error_instead_of_failing(dsv):
+    page = dsv.pages["PCA"]
+    page.window_size = 11  # no contig is that long
+    page.run()
+    assert page.result is None
+    status = page._status(None, page.ran_for, dsv.state.coord, 11).object
+    assert "Not computed" in status and "at least two windows" in status
+
+
+def test_pca_page_scores_can_be_downloaded(dsv):
+    page = dsv.pages["PCA"]
+    assert page._scores_tsv().read() == ""  # nothing yet
+    page.window_size = 3
+    page.run()
+    lines = page._scores_tsv().read().splitlines()
+    assert lines[0].split("\t")[:3] == ["sample", "sample_sets", "PC1"]
+    assert len(lines) == 8  # header and seven samples
+    assert lines[1].split("\t")[:2] == ["s1", "pop1"]
+
+
+def test_pca_page_renders(dsv):
+    # the layout builds with and without a result
+    page = dsv.pages["PCA"]
+    pn.panel(page.__panel__())
+    page.window_size = 3
+    page.run()
+    pn.panel(page.__panel__())

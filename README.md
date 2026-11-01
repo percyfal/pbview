@@ -231,6 +231,42 @@ Finally, a mask can be exported with `pbview mask export`. For a mask
 generated for several thresholds, choose one with
 `--missing-data-threshold`.
 
+## Principal component analysis of the samples
+
+How do the samples relate to each other? `pbview pca` (and the PCA page
+of the app) runs a principal component analysis of the coverage with the
+samples as the features, so each sample gets a coordinate on every
+component. Samples that cluster have similar coverage along the genome;
+a sample far from its sample set, or two samples that swap places, stand
+out.
+
+```bash
+pbview pca datastore -o datastore_pca
+```
+
+This writes `datastore_pca.scores.tsv` (the loading of each sample on
+each component, and its sample sets) and `datastore_pca.variance.tsv`
+(eigenvalue and explained variance of each component).
+
+- The data are the mean coverage of every sample in non-overlapping
+  windows of `--window-size` positions (default 10,000, or
+  `PBVIEW_PCA_WINDOW_SIZE`) inside the contigs. Contigs shorter than
+  the window have none, and the last positions of a contig that do not
+  fill a window are not used.
+- Every sample is divided by its mean coverage over the windows, so the
+  first component is not the sequencing depth, and then centred.
+- The contigs and samples can be restricted with `--min-contig-length`,
+  `--max-contig-length` and `--sample-set` (repeatable).
+- The computation is out of core: one pass over the data with Dask,
+  reading only the chunks that hold windows, and only the
+  samples x samples covariance is kept in memory, so the size of the
+  genome does not matter for the memory.
+
+In the app the PCA runs when you press **Run PCA** (it reads the whole
+selection, which takes a while for a large genome), for the current
+contig and sample selection. The page says when the selection or the
+window size has changed since the last run.
+
 ## Development note
 
 This library is inspired by

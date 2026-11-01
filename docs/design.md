@@ -169,7 +169,16 @@ selection that is not exactly one set sums the raw values: those sets
 are read in one pass, together with their missingness for every cutoff
 so that both pages share it, and sampled before the sum, but remain
 much slower than the summary path. Per-contig means are exact. `mask
-generate` is always exact.
+generate` is always exact. `pbview pca` (and the PCA page) is the
+PCA of `pbview.model.pca`: the samples are the features, each divided
+by its mean coverage over the windows. That scaling is diagonal, so
+one pass over the data is enough: per chunk that holds the start of a
+window it sums the window means and their outer products (a window
+that crosses a chunk border belongs to the chunk it starts in, so the
+result does not depend on the chunking), and the covariance, its
+eigendecomposition and the loadings are computed from the
+samples x samples sums. `Track.pca` caches the result per selection
+and window size.
 
 ## Testing
 
