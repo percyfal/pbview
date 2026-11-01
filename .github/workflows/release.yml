@@ -1,0 +1,49 @@
+name: Release
+
+# Build the wheel and the sdist and attach them to a GitHub release. It
+# runs when a release is published; run it by hand to add them to a release
+# that already exists (give the tag of the release).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag of the release to attach the files to
+        required: true
+
+permissions:
+  contents: write # to attach the files to the release
+
+jobs:
+  build:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    defaults:
+      run:
+        shell: bash -l {0} # a login shell is required for conda activation
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0 # hatch-vcs takes the version from the tags
+
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@v0.8.10
+        with:
+          pixi-version: v0.81.0
+          environments: dev
+
+      - name: Build wheel and sdist
+        run: pixi r build
+
+      - name: Check that the version is that of the tag
+        run: pixi r python .github/scripts/check_release_version.py dist
+
+      - name: Attach to the release
+        run: gh release upload "$TAG" dist/* --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

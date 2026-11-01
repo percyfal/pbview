@@ -17,7 +17,7 @@ dependencies = [
   "distributed>=2026.7.1,<2027",
   "pyarrow>=25.0.1,<26",
   "pyranges1>=1.4.4,<2",
-  "pbzarr @ git+https://github.com/pbzarr/pbzarr.git@main",
+  "pbzarr>=0.7.0,<0.8",
 ]
 
 [dependency-groups]
@@ -39,14 +39,16 @@ requires = ["hatchling", "hatch-vcs"]
 [tool.hatch.version]
 source = "vcs"
 
-[tool.hatch.metadata]
-allow-direct-references = true
-
 [tool.hatch.build.hooks.vcs]
 version-file = "src/pbview/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pbview"]
+
+# Without a list the sdist takes every file that is not ignored by git,
+# including untracked stores and datasets in the working directory.
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/docs/design.md", "/README.md", "/pyproject.toml"]
 
 [tool.pytest]
 minversion = "8.0"
@@ -162,6 +164,9 @@ pytest = "*"
 [tool.pixi.feature.dev.tasks]
 lint = "pre-commit run --all-files"
 lint-install = "pre-commit install --install-hooks -t=pre-commit -t=push"
+# The version comes from the git tag (hatch-vcs): build a release from the
+# tagged commit, otherwise the version is a dev version. Writes to dist/.
+build = "python -m hatchling build --clean -t wheel -t sdist -d dist"
 
 [tool.pixi.feature.dev.tasks.test]
 args = [{ "arg" = "test", default = "tests" }]

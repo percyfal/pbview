@@ -2,6 +2,7 @@
 .pixi/*
 !.pixi/config.toml
 /src/pbview/_version.py
+/dist/
 *.bed
 *.bedGraph
 *.d4
