@@ -965,3 +965,75 @@ def test_require_missingness(full_ds):
     assert track.require_missingness(3) is full_ds.tracks["depth_missing_cutoff=3"]
     with pytest.raises(MissingSummaryError, match=r"cutoff 7 \(available: \[3\]\)"):
         track.require_missingness(7)
+
+
+def test_group_membership(full_ds):
+    membership = full_ds.tracks["depth"].group_membership()
+    assert membership["s1"] == ("pop1",)
+    assert membership["s4"] == ("pop2",)
+    assert membership["s7"] == ("pop3",)
+
+
+def test_group_membership_without_groups_is_all(raw_ds):
+    membership = raw_ds.tracks["depth"].group_membership()
+    assert set(membership.values()) == {("ALL",)}
+
+
+def test_group_membership_lists_every_set(make_datastore, sample_sets):
+    ss = sample_sets.copy(deep=True)
+    ss[0, 1] = True  # s1 in pop1 and pop2
+    track = make_datastore(sample_sets=ss).tracks["depth"]
+    assert track.group_membership()["s1"] == ("pop1", "pop2")
+
+
+def _window_matrix(columns, size):
+    raw = _helpers.tiny_datatree()["depth"]["values"].values[:, columns]
+    starts = [0, 4, 10, 14, 18]
+    return np.array([raw[s : s + size].mean(axis=0) for s in starts])
+
+
+def test_track_pca_equals_numpy(track, coord, genome):
+    resolved = coord.resolve_for(track, genome)
+    result = track.pca(resolved, 4)  # windows 0, 4, 10, 14, 18
+    windows = _window_matrix(slice(None), 4)
+    scaled = windows / windows.mean(axis=0)
+    scaled = scaled - scaled.mean(axis=0)
+    _, singular, vt = np.linalg.svd(scaled, full_matrices=False)
+    np.testing.assert_allclose(
+        result.eigenvalues[: len(singular)], singular**2 / 4, rtol=1e-8, atol=1e-12
+    )
+    np.testing.assert_allclose(
+        np.abs(result.components[:, :4]), np.abs(vt.T[:, :4]), atol=1e-8
+    )
+    assert result.samples == tuple(track.columns)
+    assert result.n_windows == 5
+
+
+def test_track_pca_follows_the_contig_and_sample_selection(track, coord, genome):
+    selection = coord.with_contigs(["chr1", "chr10"]).with_samples(["s1", "s4", "s6"])
+    result = track.pca(selection.resolve_for(track, genome), 3)  # 0, 3, 6, 18, 21
+    assert result.samples == ("s1", "s4", "s6")
+    assert result.n_windows == 5
+    raw = _helpers.tiny_datatree()["depth"]["values"].values[:, [0, 3, 5]]
+    windows = np.array([raw[s : s + 3].mean(axis=0) for s in (0, 3, 6, 18, 21)])
+    np.testing.assert_allclose(result.mean_coverage, windows.mean(axis=0))
+
+
+def test_track_pca_is_cached(track, coord, genome, monkeypatch):
+    calls = _counting_computes(monkeypatch)
+    resolved = coord.resolve_for(track, genome)
+    first = track.pca(resolved, 4)
+    assert track.pca(resolved, 4) is first
+    assert len(calls) == 1
+    assert track.pca(resolved, 3) is not first
+
+
+def test_track_pca_errors(track, coord, genome):
+    resolved = coord.resolve_for(track, genome)
+    with pytest.raises(ValueError, match="at least two windows"):
+        track.pca(resolved, 11)  # no contig is that long
+    with pytest.raises(ValueError, match="at least 1"):
+        track.pca(resolved, 0)
+    one = coord.with_samples(["s1"]).resolve_for(track, genome)
+    with pytest.raises(ValueError, match="at least two samples"):
+        track.pca(one, 4)

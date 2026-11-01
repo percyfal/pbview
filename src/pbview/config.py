@@ -56,6 +56,8 @@ MAX_COVERAGE_PER_SAMPLE: int = int(
 # Threshold defaults are estimated from at most this many evenly spaced
 # positions (0: use all positions)
 MAX_POSITIONS: int = int(os.environ.get("PBVIEW_MAX_POSITIONS", 50_000_000))
+# PCA of coverage uses the mean coverage of windows of this many positions
+PCA_WINDOW_SIZE: int = int(os.environ.get("PBVIEW_PCA_WINDOW_SIZE", 10_000))
 
 
 # FIXME (pbzarr>0.6): the spatial dimensions will be accessible from

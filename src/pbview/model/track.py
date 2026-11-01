@@ -37,6 +37,7 @@ from pbview.model.grouping import (
 
 from .chunking import optimal_chunks_dask
 from .histogram import fold_hist
+from .pca import PcaResult, pca_from_moments, window_moments, window_starts
 
 if TYPE_CHECKING:
     from pbview.model.coordinates import (
@@ -479,6 +480,54 @@ class Track:
         per_contig_sum = per_chunk.sum(axis=0).compute()
         means = per_contig_sum / lengths[:, None]
         return {s: means[:, i] for i, s in enumerate(summary.columns)}
+
+    def group_membership(self, dim: str = "sample_set") -> dict[str, tuple[str, ...]]:
+        """The groups of `dim` that each column belongs to.
+
+        `ALL` is left out for a column that is in another group; a column in
+        no group of the track's grouping gets `ALL`.
+        """
+        grouping = self._grouping_for(dim)
+        names = grouping[grouping.dims[1]].values.tolist()
+        member = grouping.values
+        result = {}
+        for j, column in enumerate(self.columns):
+            groups = [n for n, m in zip(names, member[j]) if m]
+            specific = [n for n in groups if n != config.DEFAULT_GROUPING_SET]
+            result[column] = tuple(specific or groups or [config.DEFAULT_GROUPING_SET])
+        return result
+
+    @lru_cache(maxsize=16)
+    def pca(self, resolved: ResolvedSelection, window_size: int) -> PcaResult:
+        """PCA of the selected samples, with the samples as the features.
+
+        The data are the mean coverage of the selected samples in windows of
+        `window_size` positions inside the selected contigs, scaled by the
+        mean coverage of each sample (see `pbview.model.pca`). It makes one
+        pass over the raw values, reading only the chunks that hold windows,
+        and keeps only n_samples x n_samples numbers in memory.
+
+        Args:
+            resolved: selection resolved for this track
+                (`Coordinates.resolve_for`)
+            window_size: window length in positions
+
+        Raises:
+            ValueError: if there are fewer than two samples or windows
+        """
+        starts = window_starts(
+            self.coords["offsets"].values, resolved.intervals, window_size
+        )
+        values = self.values.sel({self.column_dim: list(resolved.labels)})
+        logger.info(
+            "PCA of %d samples in %d windows of %d positions",
+            len(resolved.labels),
+            len(starts),
+            window_size,
+        )
+        with ProgressBar():
+            moments = window_moments(values.data, starts, window_size)
+        return pca_from_moments(moments, resolved.labels, window_size)
 
     def select(self, resolved: ResolvedSelection) -> xr.Dataset:
         """Select the resolved columns and positions (original chunking)."""
