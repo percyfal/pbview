@@ -91,6 +91,10 @@ class SummaryPage(pn.viewable.Viewer):
                 line_color=color,
                 size=12,
                 legend_label=s,
+                fill_alpha=0.8,
+                line_alpha=1.0,
+                nonselection_fill_alpha=0.3,
+                nonselection_line_alpha=0.0,
             )
             renderers[s] = r
         return p
@@ -128,7 +132,6 @@ class SummaryPage(pn.viewable.Viewer):
         lengths = genome.lengths
         flags = np.zeros(len(names), dtype=np.int8)
         flags[genome.contig_indices(coord.selected_contigs(genome))] = 1
-        selected = flags / 2 + 0.3
         dflist = []
         for s in self.track.groups("sample_set", coord.column):
             means = self.track.contig_mean_coverage(s)
@@ -140,7 +143,6 @@ class SummaryPage(pn.viewable.Viewer):
                         "contig": names,
                         "length": lengths,
                         "mean": means / n_samples,
-                        "selected": selected,
                         "total_mean": means,
                     }
                 )
