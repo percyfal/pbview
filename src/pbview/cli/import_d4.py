@@ -23,14 +23,14 @@ from ._common import (
 @track_name_option()
 @log_level()
 @progress_option()
-@chunk_size_option()
+@chunk_size_option(default=None)
 def import_d4(
     path: Path | str,
     d4files: list[Path] | list[str],
     track_name: str,
     workers: int,
     progress: bool,
-    chunk_size: int,
+    chunk_size: int | None,
 ) -> None:
     """Import d4 files into a pbzarr store."""
     if len(d4files) == 0:

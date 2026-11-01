@@ -164,13 +164,17 @@ def max_bins_option(default: int = 1000) -> Callable[[FC], FC]:
     )
 
 
-def chunk_size_option(default: int = 1000000) -> Callable[[FC], FC]:
+def chunk_size_option(default: int | None = None) -> Callable[[FC], FC]:
     return click.option(
         "--chunk-size",
+        type=click.IntRange(min=1),
         default=default,
+        show_default="about PBVIEW_TARGET_BYTES per chunk" if default is None else True,
         help=(
-            "Chunk size for processing large files. Consider "
-            "reducing if number of samples is large (n>500)."
+            "Number of positions per chunk. Every chunk holds all samples. "
+            "By default the number is chosen so that a chunk is about "
+            "PBVIEW_TARGET_BYTES (100 MB) uncompressed, but not below "
+            "PBVIEW_MIN_POSITION_CHUNK_SIZE (100,000) positions."
         ),
     )
 

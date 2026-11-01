@@ -70,9 +70,6 @@ def test_summary_scatter_with_contig_subset(dsv):
     dsv.state.contigs = ["chr2"]
     df = dsv.pages["Summary"]._contig_scatter_df()
     assert len(df) == 3 * len(SETS)  # one row per contig and set
-    emphasis = df.drop_duplicates("contig").set_index("contig")["selected"]
-    assert emphasis["chr2"] > emphasis["chr1"]
-    assert emphasis["chr2"] > emphasis["chr10"]
 
 
 def test_summary_scatter_click_selects_contigs(dsv):

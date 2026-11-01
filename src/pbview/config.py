@@ -45,8 +45,10 @@ SUMMARY_MISSINGNESS = "preprocess_missingness"
 
 # Chunking
 
-MIN_POSITION_CHUNK_SIZE = os.environ.get("PBVIEW_MIN_POSITION_CHUNK_SIZE", 1_000_000)
+MIN_POSITION_CHUNK_SIZE = int(os.environ.get("PBVIEW_MIN_POSITION_CHUNK_SIZE", 100_000))
 TARGET_BYTES: int = int(os.environ.get("PBVIEW_TARGET_BYTES", 100_000_000))
+# Bytes per value of an imported track (pbzarr stores d4 coverage as int32)
+DEFAULT_ITEMSIZE: int = 4
 MAX_COVERAGE_BIN: int = int(os.environ.get("PBVIEW_MAX_COVERAGE_BIN", 100_000))
 MAX_COVERAGE_PER_SAMPLE: int = int(
     os.environ.get("PBVIEW_MAX_COVERAGE_PER_SAMPLE", 100)

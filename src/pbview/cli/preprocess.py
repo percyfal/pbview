@@ -66,7 +66,6 @@ def preprocess_sum(
     path: Path | str,
     track_name: str,
     progress: bool,
-    chunk_size: int,
     sampleset_info: str | None = None,
 ) -> None:
     """Aggregate coverage sum data."""
@@ -138,7 +137,6 @@ def preprocess_thresholds(
     path: Path | str,
     track_name: str,
     progress: bool,
-    chunk_size: int,
     missing_data_threshold: int = 3,
     max_positions: int | None = None,
     output: str | None = None,
