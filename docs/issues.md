@@ -42,7 +42,7 @@
       session (the data store is still shared)
 - [x] the genome gauges show the size of the active contigs (and their
       fraction of the genome), not the whole genome
-- [ ] the contig plot shows every contig whatever the selection; the
+- [x] the contig plot shows every contig whatever the selection; the
       `selected` column is computed but not used to dim the inactive
       contigs
 
@@ -65,3 +65,14 @@
       claimed this before `sum_hist` actually did it
 - [x] `Track.from_tree(raw=None)` fails; make `raw` required. Fix:
       accept `None`, return track with identity grouping only
+
+## Features
+
+- [ ] Add sample set grouping table as a `pn.Tabulator` widget,
+      columns `sample_set`, `samples`, where the `samples` column is a
+      comma-separated list of samples in the sample set.
+- [ ] Add sample information table as a `pn.Tabulator` widget. If the
+      number of samples exceeds a given number (say 20), the table is
+      collapsable or spread across separate columns. Columns:
+      `sample` + all sample set definitions, possibly column showing
+      sample selection status
