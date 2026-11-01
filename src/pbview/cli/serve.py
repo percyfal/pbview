@@ -4,7 +4,6 @@ from pbview.logging import log_level
 
 from ._common import (
     annotation_file_option,
-    chunk_size_option,
     dashboard_option,
     dask_port_option,
     log_filter_option,
@@ -28,7 +27,6 @@ from ._common import (
 @threads_option()
 @workers_option()
 @dashboard_option()
-@chunk_size_option()
 @max_positions_option()
 @use_dask_option()
 @log_filter_option()
@@ -41,7 +39,6 @@ def serve(
     annotation_file,
     show,
     servable,
-    chunk_size,
     max_positions,
 ):
     """Serve the app.
@@ -57,7 +54,6 @@ def serve(
         show=show,
         servable=servable,
         verbose=False,
-        chunk_size=chunk_size,
         max_positions=max_positions,
         annotation_file=annotation_file,
     )
