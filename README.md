@@ -126,6 +126,13 @@ development).
 pbview import --track-name depth datastore tests/data/s[1-7].per-base.d4
 ```
 
+Every chunk of the track holds all samples. The number of positions
+per chunk is chosen so that a chunk is about 100 MB uncompressed
+(`PBVIEW_TARGET_BYTES`), but never below 100,000 positions
+(`PBVIEW_MIN_POSITION_CHUNK_SIZE`), which gives chunks above 100 MB
+for more than about 250 samples. Set the number of positions with
+`--chunk-size`.
+
 ### 2. Data preprocessing
 
 In order to calculate accessibility thresholds, we need to process the

@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pbzarr
 
+from pbview import config
 from pbview.logging import cli_logger as logger
+from pbview.model.chunking import position_chunk_size
 
 
 def ingest(
@@ -13,7 +15,7 @@ def ingest(
     track: str = "depth",
     workers: int = 1,
     progress: bool = True,
-    chunk_size: int = 1_000_000,
+    chunk_size: int | None = None,
 ) -> None:
     """Import d4 files to pbzarr store.
 
@@ -34,12 +36,25 @@ def ingest(
         fn = Path(fn)
         sample = re.sub(".per-base.d4", "", fn.name)
         sources.append((str(fn), sample))
+    n_samples = len(sources)
+    if chunk_size is None:
+        chunk_size = position_chunk_size(
+            n_samples,
+            config.DEFAULT_ITEMSIZE,
+            config.TARGET_BYTES,
+            config.MIN_POSITION_CHUNK_SIZE,
+        )
 
     # Import data into the store
-    logger.info("Importing %i data sources", len(sources))
-    n_samples = len(sources)
+    logger.info(
+        "Importing %i data sources with chunks of %i positions x %i samples (%.0f MB)",
+        n_samples,
+        chunk_size,
+        n_samples,
+        chunk_size * n_samples * config.DEFAULT_ITEMSIZE / 1e6,
+    )
     try:
-        report = pbzarr.import_d4(
+        pbzarr.import_d4(
             destination=str(path),
             track=track,
             sources=sources,
@@ -54,5 +69,4 @@ def ingest(
         raise
     except Exception as e:
         logger.error("Error importing d4 files: %s", e)
-        logger.error(report)
         raise
