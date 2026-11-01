@@ -6,7 +6,6 @@ from pbview.logging import log_level
 from pbview.preprocess import preprocess as preprocess_mod
 
 from ._common import (
-    chunk_size_option,
     max_positions_option,
     memory_limit_option,
     missing_data_threshold_option,
@@ -34,7 +33,6 @@ def preprocess() -> None:
 @track_name_option()
 @log_level()
 @progress_option()
-@chunk_size_option()
 @sampleset_info_option()
 @missing_data_threshold_option(multiple=True, default=(3,))
 @set_threads
@@ -42,7 +40,6 @@ def preprocess_all(
     path: Path | str,
     track_name: str,
     progress: bool,
-    chunk_size: int,
     missing_data_threshold: tuple[int, ...],
     sampleset_info: str | None = None,
 ) -> None:
@@ -51,7 +48,6 @@ def preprocess_all(
         path,
         track=track_name,
         progress=progress,
-        chunk_size=chunk_size,
         sampleset_info=sampleset_info,
         missing_cutoffs=missing_data_threshold,
     )
@@ -64,7 +60,6 @@ def preprocess_all(
 @track_name_option()
 @log_level()
 @progress_option()
-@chunk_size_option()
 @sampleset_info_option()
 @set_threads
 def preprocess_sum(
@@ -79,7 +74,6 @@ def preprocess_sum(
         path,
         track=track_name,
         progress=progress,
-        chunk_size=chunk_size,
         sampleset_info=sampleset_info,
         preprocess_missingness=False,
     )
@@ -92,7 +86,6 @@ def preprocess_sum(
 @track_name_option()
 @log_level()
 @progress_option()
-@chunk_size_option()
 @sampleset_info_option()
 @missing_data_threshold_option(multiple=True, default=(3,))
 @set_threads
@@ -100,7 +93,6 @@ def preprocess_missingness(
     path: Path | str,
     track_name: str,
     progress: bool,
-    chunk_size: int,
     missing_data_threshold: tuple[int, ...],
     sampleset_info: str | None = None,
 ) -> None:
@@ -113,7 +105,6 @@ def preprocess_missingness(
         path,
         track=track_name,
         progress=progress,
-        chunk_size=chunk_size,
         sampleset_info=sampleset_info,
         missing_cutoffs=missing_data_threshold,
         preprocess_sum=False,
@@ -128,7 +119,6 @@ def preprocess_missingness(
 @track_name_option()
 @log_level()
 @progress_option()
-@chunk_size_option()
 @missing_data_threshold_option(default=3, deprecated_alias=True)
 @max_positions_option()
 @click.option(
@@ -170,7 +160,6 @@ def preprocess_thresholds(
             path,
             track_name=track_name,
             progress=progress,
-            chunk_size=chunk_size,
             missing_cutoff=missing_data_threshold,
             output=output,
             max_positions=max_positions,
