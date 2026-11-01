@@ -1,11 +1,16 @@
 import dask
+import panel as pn
 import pytest
 
 from pbview import config
 from pbview.model.coordinates import Coordinates
 from pbview.model.histogram import compute_threshold_defaults
 from pbview.model.thresholds import profile_from_defaults, profile_from_state
-from pbview.view.coordinates import selection_overview
+from pbview.view.coordinates import (
+    active_genome_size,
+    genome_size_gauges,
+    selection_overview,
+)
 from pbview.view.datastore import DataStoreView
 from pbview.view.track import estimate_label, estimate_note, selection_stride, titled
 
@@ -191,3 +196,39 @@ def test_plots_say_when_values_are_estimates(full_ds):
         )
         mis._plots["ALL"]._plot(mis._hist_rx["ALL"].rx.value, 1, dsv.state.coord)
         cov._make_boxplot(*[rx.rx.value for rx in cov._hist_rx.values()])
+
+
+def test_active_genome_size(full_ds):
+    genome = full_ds.genome
+    everything = Coordinates()
+    assert active_genome_size(everything, genome) == genome.size
+    chr2 = everything.with_contigs(["chr2"])
+    expected = int(genome.lengths[genome.contig_indices(["chr2"])].sum())
+    assert 0 < expected < genome.size
+    assert active_genome_size(chr2, genome) == expected
+    assert active_genome_size(everything.with_contigs([]), genome) == 0
+
+
+def test_genome_gauges_show_the_active_contigs(full_ds):
+    genome = full_ds.genome
+    size, fraction = genome_size_gauges(Coordinates(), genome)
+    assert (size.value, fraction.value) == (genome.size, 100.0)
+    subset = Coordinates().with_contigs(["chr1", "chr2"])
+    active = active_genome_size(subset, genome)
+    size, fraction = genome_size_gauges(subset, genome)
+    assert size.value == active
+    assert size.bounds == (0, genome.size)  # the whole genome is the scale
+    assert fraction.value == round(active / genome.size * 100, 2)
+    assert "Active" in size.label
+
+
+def test_genome_gauges_follow_the_selection(full_ds):
+    dsv = DataStoreView(full_ds, max_positions=0)
+    genome = full_ds.genome
+    pane = pn.panel(dsv.cv.genome_size_pane)  # as the sidebar uses it
+    assert pane._pane[0].value == genome.size
+    dsv.state.contigs = ["chr2"]
+    assert pane._pane[0].value == active_genome_size(dsv.state.coord, genome)
+    assert pane._pane[0].value < genome.size
+    dsv.state.lower = int(genome.lengths.max())  # the length filter counts too
+    assert pane._pane[0].value == active_genome_size(dsv.state.coord, genome)

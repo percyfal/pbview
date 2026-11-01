@@ -113,16 +113,23 @@ def test_select_rejects_other_column_dim(track):
 
 def test_lru_cache(track, coord, genome):
     resolved = coord.resolve_for(track, genome)
+    # the cache of a method is shared by all instances, and other tests
+    # add to its counters: count the hits made here
+    start = track._coverage_hist_cached.cache_info().hits
+
+    def hits():
+        return track._coverage_hist_cached.cache_info().hits - start
+
     bins = np.arange(0, 11)
     track.coverage_hist(bins=bins, resolved=resolved)
-    assert track._coverage_hist_cached.cache_info().hits == 0
+    assert hits() == 0
     track.coverage_hist(bins=bins, resolved=resolved)
-    assert track._coverage_hist_cached.cache_info().hits == 1
+    assert hits() == 1
     bins = np.arange(0, 10)
     track.coverage_hist(bins=bins, resolved=resolved)
-    assert track._coverage_hist_cached.cache_info().hits == 1
+    assert hits() == 1
     track.coverage_hist(bins=bins, resolved=resolved)
-    assert track._coverage_hist_cached.cache_info().hits == 2
+    assert hits() == 2
 
 
 @pytest.mark.parametrize(

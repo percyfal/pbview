@@ -43,13 +43,23 @@ class App(Viewer):
 
 
 def serve(servable, **kw):
-    """Serve the app"""
+    """Serve the app
+
+    The data store is opened once and shared by all sessions (it is not
+    modified, and its caches make later sessions start quickly). Every
+    session gets its own views and selection state: a Bokeh model can
+    only belong to one document, so views built once and served to every
+    session break when a session ends (the contig plot came up empty).
+    """
     logger.info("Serving main app")
 
     ds = DataStore(path=kw.pop("path", None))
-    dsview = DataStoreView(datastore=ds, max_positions=kw.pop("max_positions", None))
-    app_ = App(datastoreview=dsview)
+    max_positions = kw.pop("max_positions", None)
+
+    def create():
+        dsview = DataStoreView(datastore=ds, max_positions=max_positions)
+        return App(datastoreview=dsview).view()
 
     if servable:
-        return app_.view().servable()
-    return pn.serve(app_.view(), **kw)
+        return create().servable()
+    return pn.serve(create, **kw)

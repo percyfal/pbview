@@ -55,6 +55,42 @@ def selection_overview(
     )
 
 
+def active_genome_size(coord: Coordinates, genome: Genome) -> int:
+    """Total length of the contigs selected by `coord`."""
+    keep = genome.contig_indices(coord.selected_contigs(genome))
+    return int(genome.lengths[keep].sum())
+
+
+def genome_size_gauges(coord: Coordinates, genome: Genome) -> pn.Column:
+    """Gauges for the size of the active contigs, in bp and as a fraction.
+
+    The bounds are those of the whole genome, so a subset of the contigs
+    shows as a partly filled gauge.
+    """
+    active = active_genome_size(coord, genome)
+    return pn.Column(
+        pn.indicators.LinearGauge(
+            label="Active genome size",
+            value=active,
+            bounds=(0, genome.size),
+            horizontal=True,
+            format="{value} bp",
+            width=120,
+            height=int(config.SIDEBAR_WIDTH * 0.9),
+        ),
+        pn.indicators.LinearGauge(
+            label="Active fraction of genome",
+            value=float(np.round(active / genome.size * 100, 2)),
+            bounds=(0, 100),
+            horizontal=True,
+            format="{value} %",
+            width=90,
+            colors=["red"],
+            height=int(config.SIDEBAR_WIDTH * 0.9),
+        ),
+    )
+
+
 class CoordinatesView(Viewer):
     """Coordinates view for datastore"""
 
@@ -68,36 +104,11 @@ class CoordinatesView(Viewer):
             state.param.upper, name="Max contig length", sizing_mode="stretch_width"
         )
 
-        # FIXME: currently shows total size for all contigs
+        # state.coord is derived from lower, upper, samples and contigs, and
+        # is updated after them, so it is the one to depend on
         genome = self.state.datastore.genome
         self.genome_size_pane = pn.bind(
-            lambda *_: pn.Column(
-                pn.indicators.LinearGauge(
-                    label="Genome size",
-                    value=genome.size,
-                    bounds=(0, genome.size),
-                    horizontal=True,
-                    format="{value} bp",
-                    width=120,
-                    height=int(config.SIDEBAR_WIDTH * 0.9),
-                ),
-                pn.indicators.LinearGauge(
-                    value=np.round(
-                        genome.size / genome.size * 100,
-                        2,
-                    ),
-                    bounds=(0, 100),
-                    horizontal=True,
-                    format="{value} %",
-                    width=90,
-                    colors=["red"],
-                    height=int(config.SIDEBAR_WIDTH * 0.9),
-                ),
-            ),
-            state.param.lower,
-            state.param.upper,
-            state.param.samples,
-            state.param.contigs,
+            lambda coord: genome_size_gauges(coord, genome), state.param.coord
         )
 
         self.summary_pane = pn.bind(
