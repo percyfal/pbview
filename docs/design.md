@@ -139,7 +139,10 @@ not in the views.
   then call the `Track` computation. `DataStoreView` coordinates the
   pages (`SummaryPage`, `TrackCoveragePage`, `TrackMissingnessPage`) and
   the sidebar (`CoordinatesView`, whose table is `selection_overview`).
-- There is one `DataStore` per `serve` process, shared by sessions.
+- There is one `DataStore` per `serve` process, shared by sessions, and
+  one `DataStoreView` (state, pages, Bokeh figures) per session. A Bokeh
+  model belongs to one document, so views built once and served to every
+  session break when one ends: the contig plot came up empty.
 
 ## Command line
 

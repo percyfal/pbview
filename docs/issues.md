@@ -37,6 +37,15 @@
 
 ## Other
 
+- [x] the contig plot was empty after a session ended: the views were
+      built once and shared by all sessions; `serve` now builds them per
+      session (the data store is still shared)
+- [x] the genome gauges show the size of the active contigs (and their
+      fraction of the genome), not the whole genome
+- [ ] the contig plot shows every contig whatever the selection; the
+      `selected` column is computed but not used to dim the inactive
+      contigs
+
 - [x] the coverage and missingness pages use `--max-positions` too
       and read the data once for all sample sets; contig means are
       exact and also one pass
