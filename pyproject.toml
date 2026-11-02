@@ -1,8 +1,19 @@
 [project]
 authors = [{ name = "Per Unneberg", email = "per.unneberg@scilifelab.se" }]
 name = "pbview"
+description = "CLI and visualiser for per-base genomic data (pbzarr), such as sequencing coverage"
+readme = "README.md"
 requires-python = ">= 3.12"
 dynamic = ["version"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
 dependencies = [
   "click>=8.4.0",
   "diskcache>=5.6.3",
@@ -19,6 +30,11 @@ dependencies = [
   "pyranges1>=1.4.4,<2",
   "pbzarr>=0.7.0,<0.8",
 ]
+
+[project.urls]
+Homepage = "https://github.com/percyfal/pbview"
+Source = "https://github.com/percyfal/pbview"
+Issues = "https://github.com/percyfal/pbview/issues"
 
 [dependency-groups]
 dev = [
