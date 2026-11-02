@@ -317,6 +317,51 @@ def test_serve_opens_a_browser_only_when_asked(
     assert served["show"] is show
 
 
+@pytest.fixture
+def serve_kwargs(invoke, preprocessed_store, monkeypatch):
+    """Run `pbview serve` with the app replaced; return what it was called with."""
+    import pbview.app
+
+    def run(*args):
+        served = {}
+        monkeypatch.setattr(pbview.app, "serve", lambda *a, **kw: served.update(kw))
+        result = invoke("serve", preprocessed_store, *args)
+        assert result.exit_code == 0, result.output
+        return served
+
+    return run
+
+
+def test_serve_listens_on_localhost_by_default(serve_kwargs):
+    kw = serve_kwargs()
+    assert kw["address"] == "localhost"
+    assert kw["websocket_origin"] is None
+
+
+def test_serve_address_and_origins(serve_kwargs):
+    kw = serve_kwargs(
+        "--address",
+        "0.0.0.0",
+        "--port",
+        8080,
+        "--allow-websocket-origin",
+        "localhost:9000",
+        "--allow-websocket-origin",
+        "localhost:9001",
+    )
+    assert kw["address"] == "0.0.0.0"
+    assert kw["port"] == 8080
+    assert kw["websocket_origin"] == ["localhost:9000", "localhost:9001"]
+
+
+def test_serve_help_describes_remote_use(invoke):
+    result = invoke("serve", "--help")
+    text = " ".join(result.output.split())
+    assert "--address" in text and "no login" in text
+    assert "--allow-websocket-origin" in text
+    assert "ssh -L" in text
+
+
 D4_FILES = sorted((Path(__file__).parent / "data").glob("s[1-7].per-base.d4"))
 
 

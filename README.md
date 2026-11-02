@@ -231,6 +231,32 @@ Finally, a mask can be exported with `pbview mask export`. For a mask
 generated for several thresholds, choose one with
 `--missing-data-threshold`.
 
+## Running on a remote machine
+
+`pbview serve` listens on `localhost` only, so only a browser on the same
+machine can reach it. To run it on a compute node and view it on your
+laptop, listen on an address the laptop's connection can reach and
+forward the port with ssh, as for a Jupyter notebook:
+
+1. On the compute node: `pbview serve --address 0.0.0.0 --port 8080 STORE`
+2. On your laptop: `ssh -L 8080:NODE:8080 user@login-node`, where `NODE`
+   is the host name of the compute node.
+3. On your laptop, open <http://localhost:8080>.
+
+If you forward a different local port, for example `-L 9000:NODE:8080`,
+the browser connects as `localhost:9000` and the server refuses the
+websocket connection unless you allow that origin:
+`--allow-websocket-origin localhost:9000` (repeatable; `localhost` and the
+port served on stay allowed).
+
+> [!WARNING]
+> The app has no login. With `--address 0.0.0.0` everyone who can reach the
+> node and port can use it and read the data, and the app logs a warning.
+> If the cluster lets you ssh to the compute nodes, you can keep the
+> default address and jump through the login node instead:
+> `ssh -J user@login-node -L 8080:localhost:8080 user@NODE`.
+> Earlier versions listened on all interfaces by default.
+
 ## Principal component analysis of the samples
 
 How do the samples relate to each other? `pbview pca` (and the PCA page

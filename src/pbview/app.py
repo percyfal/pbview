@@ -9,6 +9,8 @@ __author__ = "Per Unneberg"
 __contact__ = "per.unneberg@scilifelab.se"
 __date__ = "2026-09-01"
 
+import ipaddress
+
 import panel as pn
 import param
 from panel.viewable import Viewer
@@ -42,6 +44,16 @@ class App(Viewer):
         return self._template
 
 
+def is_loopback(address: str | None) -> bool:
+    """Whether `address` can only be reached from the machine itself."""
+    if address is None or address == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(address).is_loopback
+    except ValueError:  # a host name
+        return False
+
+
 def serve(servable, **kw):
     """Serve the app
 
@@ -62,4 +74,17 @@ def serve(servable, **kw):
 
     if servable:
         return create().servable()
+    # Panel listens on all interfaces without an address; the app has no login
+    address = kw["address"] = kw.get("address") or "localhost"
+    port = kw.get("port")
+    origins = kw.get("websocket_origin")
+    if origins and f"localhost:{port}" not in origins:
+        kw["websocket_origin"] = [*origins, f"localhost:{port}"]
+    logger.info("Serving at http://%s:%s", address, port)
+    if not is_loopback(address):
+        logger.warning(
+            "Listening on %s: the app has no login, so everyone who can reach "
+            "this address and port can use it and read the data",
+            address,
+        )
     return pn.serve(create, **kw)
