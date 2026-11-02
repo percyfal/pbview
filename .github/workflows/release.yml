@@ -1,16 +1,22 @@
 name: Release
 
-# Build the wheel and the sdist and attach them to a GitHub release. It
-# runs when a release is published; run it by hand to add them to a release
-# that already exists (give the tag of the release).
+# Build the wheel and the sdist and attach them to a GitHub release, and
+# publish them to PyPI. It runs when a release is published; run it by hand
+# to add the files to a release that already exists (give the tag), and
+# choose there whether to publish: nothing, to TestPyPI or to PyPI.
 on:
   release:
     types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag of the release to attach the files to
+        description: Tag of the release to build
         required: true
+      publish:
+        description: Where to publish the files (besides the release)
+        type: choice
+        options: [none, testpypi, pypi]
+        default: none
 
 permissions:
   contents: write # to attach the files to the release
@@ -47,3 +53,55 @@ jobs:
         run: gh release upload "$TAG" dist/* --clobber
         env:
           GH_TOKEN: ${{ github.token }}
+
+      - name: Keep the files for the publish jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # PyPI and TestPyPI are told to trust this workflow and the environment
+  # named here (trusted publishing), so there is no token to store. The files
+  # of a version can only be uploaded once; try TestPyPI first.
+  publish-testpypi:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == 'testpypi'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/pbview
+    permissions:
+      id-token: write # trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  # A published release goes to PyPI once the repository variable
+  # PUBLISH_TO_PYPI is "true" (Settings, Secrets and variables, Actions,
+  # Variables); until then, publish by hand.
+  publish-pypi:
+    needs: build
+    if: >-
+      (github.event_name == 'release' && vars.PUBLISH_TO_PYPI == 'true') ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish == 'pypi')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pbview
+    permissions:
+      id-token: write # trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
