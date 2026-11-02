@@ -183,6 +183,36 @@ def port_option(default: int = 5507) -> Callable[[FC], FC]:
     return click.option("port", "--port", default=default, help="Port to serve on")
 
 
+def address_option(default: str = "localhost") -> Callable[[FC], FC]:
+    return click.option(
+        "--address",
+        default=default,
+        show_default=True,
+        help=(
+            "Address to listen on. The default only accepts connections from "
+            "this machine. Use 0.0.0.0 to listen on all interfaces, for "
+            "example on a compute node that you reach through port "
+            "forwarding. The app has no login: everyone who can reach the "
+            "address can use it."
+        ),
+    )
+
+
+def websocket_origin_option() -> Callable[[FC], FC]:
+    return click.option(
+        "--allow-websocket-origin",
+        "allow_websocket_origin",
+        multiple=True,
+        metavar="HOST:PORT",
+        help=(
+            "Host and port the browser connects to, if it is not localhost "
+            "and the port served on, for example localhost:9000 when "
+            "forwarding that port to this one (repeatable). localhost and the "
+            "port served on stay allowed."
+        ),
+    )
+
+
 def show_option(default: bool = False) -> Callable[[FC], FC]:
     return click.option(
         "--show/--no-show",

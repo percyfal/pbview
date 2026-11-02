@@ -180,6 +180,13 @@ eigendecomposition and the loadings are computed from the
 samples x samples sums. `Track.pca` caches the result per selection
 and window size.
 
+`pbview serve` listens on `localhost` (Panel's own default is all
+interfaces, and the app has no login). `--address` changes it, with a
+warning for anything but a loopback address, and
+`--allow-websocket-origin` adds hosts that may open the websocket, for
+a forwarded port that differs from the one served on; `localhost` and
+the port served on are always allowed.
+
 ## Testing
 
 - No demo data. Tests build tiny stores (`tests/_helpers.make_store`)
